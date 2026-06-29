@@ -189,6 +189,9 @@ function toggleBC2() {
     btn.style.background = "#fa8072";
     sec.style.display = "none";
   }
+  // Replacer BF apres BC2
+  var container = document.getElementById("form-sections");
+  if (container && container._tasksSec) refreshFormOrder(container, container._tasksSec);
 }
 
 // ── SYSTEME DE CRENEAUX ───────────────────────────────────────────────────────
@@ -335,7 +338,19 @@ function buildForm() {
     container._bc2Sec = bc2Inner;
   }
 
-  // BOUT FROID
+  container._bfSec = null;
+  container._tasksSec = bc1Sec;
+
+  // BOUT FROID - sera appende apres BC2 dans refreshFormOrder
+  refreshFormOrder(container, bc1Sec);
+}
+
+function refreshFormOrder(container, bc1Sec) {
+  // Supprimer l ancien bout froid s il existe
+  var oldBF = container._bfSec;
+  if (oldBF && oldBF.parentNode === container) oldBF.remove();
+
+  // Creer le bout froid
   var bfSec = document.createElement("div");
   bfSec.className = "tasks-sec"; bfSec.style.borderColor = BOUT_FROID_COLOR;
   var bfHd = document.createElement("div");
@@ -348,9 +363,15 @@ function buildForm() {
     tv._labelDebut = task.labelDebut; tv._labelFin = task.labelFin;
     appendTaskRow(bfSec, task.id, task.machine, task.qui, tv, task.color);
   });
-  container.appendChild(bfSec);
+
+  // Ajouter BF apres BC2 section
+  var bc2Div = document.getElementById("bc2-section");
+  if (bc2Div && bc2Div.parentNode) {
+    bc2Div.insertAdjacentElement("afterend", bfSec);
+  } else {
+    container.appendChild(bfSec);
+  }
   container._bfSec = bfSec;
-  container._tasksSec = bc1Sec;
 }
 
 function appendExtraTasksSection(sec, savedExtras, prefix) {

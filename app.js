@@ -341,8 +341,6 @@ function buildForm() {
   container._bfSec = null;
   container._tasksSec = bc1Sec;
 
-  // BOUT FROID - sera appende apres BC2 dans refreshFormOrder
-  refreshFormOrder(container, bc1Sec);
 }
 
 function refreshFormOrder(container, bc1Sec) {

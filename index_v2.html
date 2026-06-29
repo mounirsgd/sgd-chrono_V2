@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SGD Chrono V2 - Changement Temp/Machine</title>
+  <link rel="stylesheet" href="style.css?v=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<!-- TOOLTIP -->
+<div id="tooltip">
+  <div class="tt-header"><span id="tt-dot" class="tt-dot"></span><span id="tt-title" class="tt-title"></span></div>
+  <div class="tt-row"><span class="tt-label">Qui</span><span id="tt-qui" class="tt-val"></span></div>
+  <div class="tt-row"><span class="tt-label">Debut</span><span id="tt-start" class="tt-val"></span></div>
+  <div class="tt-row"><span class="tt-label">Fin</span><span id="tt-end" class="tt-val"></span></div>
+  <div id="tt-dur" class="tt-dur"></div>
+  <div id="tt-comment-box" class="tt-comment-box" style="display:none"><span id="tt-comment"></span></div>
+</div>
+
+<!-- ECRAN DE CONNEXION -->
+<div id="login-screen" style="display:flex">
+  <div class="login-card">
+    <div class="login-logo v2">
+      <span>SGD</span>
+      <span class="login-logo-sub">Chrono</span>
+    </div>
+    <h1 class="login-title">Suivi des changements<br><span class="login-title-sub">Temp / Machine — V2</span></h1>
+    <p class="login-subtitle">SUCY-EN-BRIE · ACCES SECURISE</p>
+    <div class="login-field">
+      <label class="login-label">IDENTIFIANT</label>
+      <input id="login-email" type="email" class="login-input" placeholder="admin.sgd@gmail.com" autocomplete="username">
+    </div>
+    <div class="login-field">
+      <label class="login-label">MOT DE PASSE</label>
+      <input id="login-pass" type="password" class="login-input" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div id="login-error" class="login-error" style="display:none"></div>
+    <button id="login-btn" class="login-btn v2">Se connecter</button>
+  </div>
+</div>
+
+<!-- APPLICATION -->
+<div id="app" style="display:none">
+
+  <!-- HEADER -->
+  <div class="hdr">
+    <div class="hdr-logo v2"><span>SGD</span></div>
+    <div class="hdr-text">
+      <h1>Changement - Temp/Machine <span class="v2-badge">V2</span></h1>
+      <div class="hdr-sub">SGD Pharma - Sucy-en-Brie</div>
+    </div>
+    <div class="hdr-right">
+      <span id="sync-status" class="sync-dot">--</span>
+      <span id="user-label" class="user-label"></span>
+      <button id="logout-btn" class="logout-btn">&#x23FB;</button>
+    </div>
+  </div>
+
+  <div class="machine-banner v2">SGD Pharma - Sucy-en-Brie · Version 2</div>
+
+  <div class="form-wrap">
+
+    <!-- HISTORIQUE -->
+    <div class="history-sec">
+      <div class="history-hd">
+        Historique <span id="history-count" style="font-weight:400;font-size:10px"></span>
+        <span class="history-del-all" id="del-all-btn">Tout supprimer</span>
+      </div>
+      <div class="history-list" id="history-list"><div class="history-empty">Aucune seance enregistree</div></div>
+    </div>
+
+    <!-- INFORMATIONS -->
+    <div class="info-sec">
+      <div class="info-sec-hd">Informations de la seance</div>
+      <div class="info-row"><label>Date</label><input id="f-date" type="date"></div>
+      <div class="info-row"><label>Numero de ligne</label><input id="f-machine-name" placeholder="ex : Ligne 5" autocomplete="off"></div>
+      <div class="info-row export-row">
+        <span class="export-label">Exporter les donnees</span>
+        <div class="export-right">
+          <div class="export-dropdown" id="export-dropdown">
+            <button class="export-btn" id="export-toggle-btn">&#x1F4CA; Exporter Excel &#x25BE;</button>
+            <div class="export-menu" id="export-menu" style="display:none">
+              <div class="export-menu-item" id="export-all">Tout exporter</div>
+              <div class="export-menu-item" id="export-month">Ce mois-ci</div>
+              <div class="export-menu-item" id="export-custom">Choisir une periode</div>
+              <div class="export-date-range" id="export-date-range" style="display:none">
+                <input type="date" id="export-date-from">
+                <span>au</span>
+                <input type="date" id="export-date-to">
+                <button id="export-confirm-btn">OK</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOGGLE BOUT CHAUD 2 -->
+    <div style="padding:10px 0;">
+      <button id="toggle-bc2-btn" style="background:#27ae60;color:#fff;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;width:100%;">
+        + Activer Bout Chaud 2
+      </button>
+    </div>
+
+    <!-- FORMULAIRE -->
+    <div id="form-sections"></div>
+
+    <!-- BOUT CHAUD 2 (masque par defaut) -->
+    <div id="bc2-section" style="display:none;"></div>
+
+    <!-- BOUTONS -->
+    <div class="btns">
+      <button class="btn btn-ok" id="save-btn">&#x2713; Enregistrer et afficher le Gantt</button>
+      <button class="btn btn-full" id="new-session-btn">Nouvelle seance (repartir a zero)</button>
+    </div>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- GANTT -->
+  <div class="gantt-section" id="gantt-section" style="display:none">
+    <div class="gantt-title">
+      <h2 id="gantt-machine-title">Changement - Temp/Machine</h2>
+      <div id="gantt-subtitle" class="gantt-subtitle"></div>
+    </div>
+    <div class="gantt-scroll">
+      <div id="gantt-container"></div>
+    </div>
+    <div id="justif-container"></div>
+  </div>
+
+  <!-- BARRE COMPARAISON -->
+  <div id="cmp-bar" class="cmp-bar">
+    <div class="cmp-bar-inner">
+      <span id="cmp-bar-names" class="cmp-bar-names"></span>
+      <div id="justif-btn-container" style="display:none">
+        <button id="do-justif-btn" class="cmp-justif-btn">+ Justification</button>
+      </div>
+      <button id="do-compare-btn" class="cmp-go-btn">Comparer</button>
+      <button id="close-compare-btn" class="cmp-close-btn">&#x2715;</button>
+    </div>
+    <div id="cmp-result" class="cmp-result">
+      <div id="cmp-result-title" class="cmp-result-title"></div>
+      <div id="cmp-cards" class="cmp-cards"></div>
+      <div id="cmp-diff-box" class="cmp-diff-box"></div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module" src="app.js?v=1.0"></script>
+</body>
+</html>

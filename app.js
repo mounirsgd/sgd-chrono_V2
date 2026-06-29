@@ -182,11 +182,11 @@ function toggleBC2() {
   var sec = document.getElementById("bc2-section");
   if (bc2Active) {
     btn.textContent = "Desactiver Bout Chaud 2";
-    btn.style.background = "#e74c3c";
+    btn.style.background = "#c0392b";
     sec.style.display = "block";
   } else {
     btn.textContent = "+ Activer Bout Chaud 2";
-    btn.style.background = "#27ae60";
+    btn.style.background = "#fa8072";
     sec.style.display = "none";
   }
 }
@@ -605,7 +605,7 @@ async function newSession() {
   document.getElementById("f-machine-name").value = "";
   ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, tasks2:{}, extraTasks:[], extraTasks2:[], bc2Active:false };
   var btn = document.getElementById("toggle-bc2-btn");
-  btn.textContent = "+ Activer Bout Chaud 2"; btn.style.background = "#27ae60";
+  btn.textContent = "+ Activer Bout Chaud 2"; btn.style.background = "#fa8072";
   document.getElementById("bc2-section").style.display = "none";
   buildForm();
   document.getElementById("gantt-container").innerHTML = '<div class="empty-gantt">Remplissez le formulaire et enregistrez pour afficher le Gantt</div>';
@@ -672,10 +672,10 @@ async function loadHistorySession(id) {
   window._editingSessionId = id;
   var btn = document.getElementById("toggle-bc2-btn");
   if (bc2Active) {
-    btn.textContent = "Desactiver Bout Chaud 2"; btn.style.background = "#e74c3c";
+    btn.textContent = "Desactiver Bout Chaud 2"; btn.style.background = "#c0392b";
     document.getElementById("bc2-section").style.display = "block";
   } else {
-    btn.textContent = "+ Activer Bout Chaud 2"; btn.style.background = "#27ae60";
+    btn.textContent = "+ Activer Bout Chaud 2"; btn.style.background = "#fa8072";
     document.getElementById("bc2-section").style.display = "none";
   }
   buildForm();

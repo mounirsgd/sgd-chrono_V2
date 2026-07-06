@@ -11,7 +11,6 @@ const firebaseConfig = {
   messagingSenderId: "1078531383655",
   appId: "1:1078531383655:web:9f4d7d5e5ee3b85aa74fc2"
 };
-
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getDatabase(firebaseApp);
@@ -22,7 +21,7 @@ const TASK_COLORS = [
   "#6366f1","#10b981","#eab308","#64748b","#d946ef"
 ];
 
-const TASKS_BOUT_CHAUD = [
+const TASKS_RONDELLE = [
   {id:"ron_1", machine:"Nettoyage de machine", qui:"Production"},
   {id:"ron_2", machine:"Changement rondelle (cuvette)", qui:"Feederman"},
   {id:"ron_3", machine:"Cote Finisseur", qui:"Atelier IS"},
@@ -45,23 +44,21 @@ const TASKS_BOUT_FROID = [
 const BOUT_FROID_COLOR = "#2e86ab";
 const MAX_SLOTS = 4;
 const HISTORY_PAGE_SIZE = 5;
+const ALL_TASK_IDS = TASKS_RONDELLE.map(function(t){return t.id;}).concat(TASKS_BOUT_FROID.map(function(t){return t.id;}));
 
 let allSessions = {};
-let ganttData = {
-  targets:{grand_t1:{},petit_t1:{},rondelle:{}},
-  tasks:{}, tasks2:{}, extraTasks:[], extraTasks2:[],
-  bc2Active: false
-};
+let ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, extraTasks:[] };
 let selectedIds = [];
 let allTasks = {};
 let historyPage = 0;
 let ganttQuiOverrides = {};
 let justifications = [];
 let appReady = false;
+let currentSessId = null;
 let bc2Active = false;
+let machine2 = "";
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
-
 document.getElementById("login-btn").addEventListener("click", async function() {
   var email = document.getElementById("login-email").value.trim();
   var password = document.getElementById("login-pass").value.trim();
@@ -87,8 +84,8 @@ document.getElementById("logout-btn").addEventListener("click", function() {
   signOut(auth); appReady = false;
   document.getElementById("app").style.display = "none";
   document.getElementById("login-screen").style.display = "flex";
-  var btn = document.getElementById("login-btn");
-  btn.textContent = "Se connecter"; btn.disabled = false;
+  document.getElementById("login-btn").textContent = "Se connecter";
+  document.getElementById("login-btn").disabled = false;
   document.getElementById("login-error").style.display = "none";
 });
 
@@ -114,54 +111,57 @@ function showLoginError(msg) {
 
 function translateAuthError(code) {
   var m = {
-    "auth/invalid-email": "Identifiant invalide.",
-    "auth/user-not-found": "Identifiant introuvable.",
-    "auth/wrong-password": "Mot de passe incorrect.",
-    "auth/invalid-credential": "Identifiant ou mot de passe incorrect.",
-    "auth/too-many-requests": "Trop de tentatives.",
-    "auth/network-request-failed": "Erreur reseau."
+    "auth/invalid-email":"Identifiant invalide.",
+    "auth/user-not-found":"Identifiant introuvable.",
+    "auth/wrong-password":"Mot de passe incorrect.",
+    "auth/invalid-credential":"Identifiant ou mot de passe incorrect.",
+    "auth/too-many-requests":"Trop de tentatives.",
+    "auth/network-request-failed":"Erreur reseau."
   };
   return m[code] || "Erreur : " + code;
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
-
 function initApp() {
-  ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, tasks2:{}, extraTasks:[], extraTasks2:[], bc2Active:false };
-  selectedIds = []; ganttQuiOverrides = {}; justifications = []; bc2Active = false;
-
+  resetState();
   var dateField = document.getElementById("f-date");
   if (dateField && !dateField.value) dateField.value = new Date().toISOString().slice(0,10);
   setInterval(function() {
     var d = document.getElementById("f-date");
     if (d && !d.value) d.value = new Date().toISOString().slice(0,10);
   }, 60000);
-
-  document.getElementById("f-machine-name").value = "";
-  document.getElementById("gantt-container").innerHTML = '<div class="empty-gantt">Remplissez le formulaire et enregistrez pour afficher le Gantt</div>';
-
   buildForm();
 
   onValue(ref(db, "sessions"), function(snap) {
     allSessions = snap.val() || {};
     renderHistory(allSessions);
     document.getElementById("sync-status").textContent = "Connecte";
+    // Mettre a jour le Gantt si une session est en cours d affichage
     var gs = document.getElementById("gantt-section");
-    if (gs && gs.style.display !== "none") {
-      var arr = Object.values(allSessions).sort(function(a,b){ return (b.savedAt||0)-(a.savedAt||0); });
-      if (arr.length > 0 && arr[0] && arr[0].ganttData) {
-        renderGantt(arr[0].date, arr[0].machine, arr[0].ganttData);
-      }
+    if (gs && gs.style.display !== "none" && currentSessId && allSessions[currentSessId]) {
+      var s = allSessions[currentSessId];
+      renderGantt(s.date, s.machine, s.ganttData || {});
     }
   });
 
   document.getElementById("save-btn").addEventListener("click", saveSession);
+  document.getElementById("toggle-bc2-btn").addEventListener("click", function() {
+    bc2Active = !bc2Active;
+    var btn = document.getElementById("toggle-bc2-btn");
+    var sec = document.getElementById("bc2-form-section");
+    if (bc2Active) {
+      btn.textContent = "- BC2"; btn.style.background = "#c0392b";
+      sec.style.display = "block";
+    } else {
+      btn.textContent = "+ BC2"; btn.style.background = "#fa8072";
+      sec.style.display = "none";
+    }
+  });
   document.getElementById("new-session-btn").addEventListener("click", newSession);
   document.getElementById("del-all-btn").addEventListener("click", deleteAllHistory);
   document.getElementById("do-compare-btn").addEventListener("click", doCompare);
   document.getElementById("close-compare-btn").addEventListener("click", closeCompare);
   document.getElementById("do-justif-btn").addEventListener("click", openJustifDialog);
-  document.getElementById("toggle-bc2-btn").addEventListener("click", toggleBC2);
   initExportButtons();
 
   var TT = document.getElementById("tooltip");
@@ -174,127 +174,19 @@ function initApp() {
   });
 }
 
-// ── TOGGLE BOUT CHAUD 2 ───────────────────────────────────────────────────────
-
-function toggleBC2() {
-  bc2Active = !bc2Active;
-  var btn = document.getElementById("toggle-bc2-btn");
-  var sec = document.getElementById("bc2-section");
-  if (bc2Active) {
-    btn.textContent = "Desactiver Bout Chaud 2";
-    btn.style.background = "#c0392b";
-    sec.style.display = "block";
-  } else {
-    btn.textContent = "+ Activer Bout Chaud 2";
-    btn.style.background = "#fa8072";
-    sec.style.display = "none";
-  }
-  // Replacer BF apres BC2
-  var container = document.getElementById("form-sections");
-  if (container && container._tasksSec) refreshFormOrder(container, container._tasksSec);
-}
-
-// ── SYSTEME DE CRENEAUX ───────────────────────────────────────────────────────
-
-function buildSlotSystem(holder, container, savedSlots, labelDebut, labelFin) {
-  holder._slots = [];
-  var slotsWrap = document.createElement("div");
-  slotsWrap.className = "task-row-times";
-
-  var addBtn = document.createElement("button");
-  addBtn.className = "btn-add-slot"; addBtn.textContent = "+";
-
-  var removeBtn = document.createElement("button");
-  removeBtn.className = "btn-add-slot"; removeBtn.textContent = "-";
-  removeBtn.style.background = "#e74c3c";
-  removeBtn.style.display = "none";
-
-  function refreshBtns() {
-    var n = holder._slots.length;
-    addBtn.style.display = n >= MAX_SLOTS ? "none" : "";
-    removeBtn.style.display = n <= 1 ? "none" : "";
-  }
-
-  function addSlot(sh, sm, eh, em, comment) {
-    var n = holder._slots.length;
-    if (n > 0) {
-      var sep = document.createElement("span");
-      sep.className = "slot-sep";
-      sep.style.cssText = "font-size:11px;color:#6c6c70;margin:0 4px;";
-      sep.textContent = "puis";
-      slotsWrap.insertBefore(sep, addBtn);
-    }
-    var slotEl = makeSlotRow(sh||"", sm||"", eh||"", em||"", n===0?labelDebut:null, n===0?labelFin:null);
-    slotsWrap.insertBefore(slotEl, addBtn);
-
-    var cmtTA = makeTextarea("Commentaire creneau "+(n+1)+"...", comment||"");
-    var cmtWrap = document.createElement("div"); cmtWrap.className = "task-comment-wrap";
-    cmtWrap.appendChild(cmtTA);
-    container.appendChild(cmtWrap);
-
-    holder._slots.push({slotEl:slotEl, cmtTA:cmtTA, cmtWrap:cmtWrap});
-    refreshBtns();
-  }
-
-  function removeLastSlot() {
-    if (holder._slots.length <= 1) return;
-    var last = holder._slots.pop();
-    last.slotEl.remove(); last.cmtWrap.remove();
-    var seps = slotsWrap.querySelectorAll("span.slot-sep");
-    if (seps.length > 0) seps[seps.length-1].remove();
-    refreshBtns();
-  }
-
-  addBtn.addEventListener("click", function() { addSlot("","","",""); });
-  removeBtn.addEventListener("click", removeLastSlot);
-  slotsWrap.appendChild(addBtn);
-  slotsWrap.appendChild(removeBtn);
-
-  if (savedSlots && savedSlots.length > 0) {
-    savedSlots.forEach(function(s) { addSlot(s.sh, s.sm, s.eh, s.em, s.comment); });
-  } else {
-    addSlot("","","","");
-  }
-
-  return slotsWrap;
-}
-
-function readSlots(holder) {
-  var d = {};
-  if (!holder._slots) return d;
-  var keys = [
-    ["sh","sm","eh","em","comment"],
-    ["sh2","sm2","eh2","em2","comment2"],
-    ["sh3","sm3","eh3","em3","comment3"],
-    ["sh4","sm4","eh4","em4","comment4"]
-  ];
-  holder._slots.forEach(function(s, i) {
-    if (i >= keys.length) return;
-    var k = keys[i];
-    d[k[0]] = s.slotEl._sF._getH();
-    d[k[1]] = s.slotEl._sF._getM();
-    d[k[2]] = s.slotEl._eF._getH();
-    d[k[3]] = s.slotEl._eF._getM();
-    d[k[4]] = s.cmtTA.value;
-  });
-  return d;
-}
-
-function getSavedSlots(obj) {
-  var slots = [{sh:obj.sh, sm:obj.sm, eh:obj.eh, em:obj.em, comment:obj.comment||""}];
-  if (obj.sh2||obj.eh2) slots.push({sh:obj.sh2, sm:obj.sm2, eh:obj.eh2, em:obj.em2, comment:obj.comment2||""});
-  if (obj.sh3||obj.eh3) slots.push({sh:obj.sh3, sm:obj.sm3, eh:obj.eh3, em:obj.em3, comment:obj.comment3||""});
-  if (obj.sh4||obj.eh4) slots.push({sh:obj.sh4, sm:obj.sm4, eh:obj.eh4, em:obj.em4, comment:obj.comment4||""});
-  return slots;
+function resetState() {
+  ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, extraTasks:[], tasks2:{}, extraTasks2:[], bc2Active:false, machine2:"" };
+  selectedIds = []; ganttQuiOverrides = {}; justifications = [];
+  currentSessId = null;
+  document.getElementById("f-machine-name").value = "";
+  document.getElementById("f-date").value = new Date().toISOString().slice(0,10);
 }
 
 // ── FORMULAIRE ────────────────────────────────────────────────────────────────
-
 function buildForm() {
   var container = document.getElementById("form-sections");
   container.innerHTML = "";
 
-  // TARGETS
   var targetsGroup = document.createElement("div");
   targetsGroup.style.cssText = "background:#f0f2f5;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;margin-bottom:4px;";
   targetsGroup.appendChild(buildTargetSection("grand_t1","TARGET (Grand T1)","#c0392b",ganttData.targets.grand_t1||{}));
@@ -302,112 +194,124 @@ function buildForm() {
   targetsGroup.appendChild(buildTargetSection("rondelle","TARGET (Rondelle)","#7d3c98",ganttData.targets.rondelle||{}));
   container.appendChild(targetsGroup);
 
-  // BOUT CHAUD 1
-  var bc1Sec = document.createElement("div");
-  bc1Sec.className = "tasks-sec"; bc1Sec.style.borderColor = "#1a3a6b";
-  var bc1Hd = document.createElement("div");
-  bc1Hd.className = "tasks-sec-hd"; bc1Hd.style.background = "#1a3a6b";
-  bc1Hd.textContent = "BOUT CHAUD 1";
-  bc1Sec.appendChild(bc1Hd);
-  bc1Sec._taskFields = {}; bc1Sec._extraFields = [];
-  TASKS_BOUT_CHAUD.forEach(function(task, idx) {
+  var tasksSec = document.createElement("div");
+  tasksSec.className = "tasks-sec"; tasksSec.style.borderColor = "#1a3a6b";
+  var tasksHd = document.createElement("div"); tasksHd.className = "tasks-sec-hd"; tasksHd.style.background = "#1a3a6b";
+  tasksHd.textContent = "Taches detaillees"; tasksSec.appendChild(tasksHd);
+  tasksSec._taskFields = {}; tasksSec._extraFields = [];
+
+  TASKS_RONDELLE.forEach(function(task, idx) {
     var tv = ganttData.tasks[task.id] || {};
-    appendTaskRow(bc1Sec, task.id, task.machine, task.qui, tv, TASK_COLORS[idx % TASK_COLORS.length]);
+    appendTaskRow(tasksSec, task.id, task.machine, task.qui, tv, TASK_COLORS[idx % TASK_COLORS.length]);
   });
-  appendExtraTasksSection(bc1Sec, ganttData.extraTasks||[], "bc1");
-  container.appendChild(bc1Sec);
-  container._bc1Sec = bc1Sec;
 
-  // TOGGLE BOUT CHAUD 2 - deja dans le HTML, juste mise a jour de l'etat
-  var bc2Sec = document.getElementById("bc2-section");
-  if (bc2Sec) {
-    bc2Sec.innerHTML = "";
-    var bc2Inner = document.createElement("div");
-    bc2Inner.className = "tasks-sec"; bc2Inner.style.borderColor = "#c0392b";
-    var bc2Hd = document.createElement("div");
-    bc2Hd.className = "tasks-sec-hd"; bc2Hd.style.background = "#c0392b";
-    bc2Hd.textContent = "BOUT CHAUD 2";
-    bc2Inner.appendChild(bc2Hd);
-    bc2Inner._taskFields = {}; bc2Inner._extraFields = [];
-    TASKS_BOUT_CHAUD.forEach(function(task, idx) {
-      var tv = ganttData.tasks2 ? (ganttData.tasks2[task.id] || {}) : {};
-      appendTaskRow(bc2Inner, task.id, task.machine, task.qui, tv, TASK_COLORS[idx % TASK_COLORS.length]);
-    });
-    appendExtraTasksSection(bc2Inner, ganttData.extraTasks2||[], "bc2");
-    bc2Sec.appendChild(bc2Inner);
-    container._bc2Sec = bc2Inner;
-  }
+  var bfSep = document.createElement("div");
+  bfSep.style.cssText = "background:"+BOUT_FROID_COLOR+";color:#fff;font-size:12px;font-weight:700;padding:8px 12px;letter-spacing:.5px;";
+  bfSep.textContent = "BOUT FROID"; tasksSec.appendChild(bfSep);
 
-  container._bfSec = null;
-  container._tasksSec = bc1Sec;
-
-}
-
-function refreshFormOrder(container, bc1Sec) {
-  // Supprimer l ancien bout froid s il existe
-  var oldBF = container._bfSec;
-  if (oldBF && oldBF.parentNode === container) oldBF.remove();
-
-  // Creer le bout froid
-  var bfSec = document.createElement("div");
-  bfSec.className = "tasks-sec"; bfSec.style.borderColor = BOUT_FROID_COLOR;
-  var bfHd = document.createElement("div");
-  bfHd.className = "tasks-sec-hd"; bfHd.style.background = BOUT_FROID_COLOR;
-  bfHd.textContent = "BOUT FROID";
-  bfSec.appendChild(bfHd);
-  bfSec._taskFields = {}; bfSec._extraFields = [];
   TASKS_BOUT_FROID.forEach(function(task) {
     var tv = ganttData.tasks[task.id] || {};
     tv._labelDebut = task.labelDebut; tv._labelFin = task.labelFin;
-    appendTaskRow(bfSec, task.id, task.machine, task.qui, tv, task.color);
+    appendTaskRow(tasksSec, task.id, task.machine, task.qui, tv, task.color);
   });
 
-  // Ajouter BF apres BC2 section
-  var bc2Div = document.getElementById("bc2-section");
-  if (bc2Div && bc2Div.parentNode) {
-    bc2Div.insertAdjacentElement("afterend", bfSec);
-  } else {
-    container.appendChild(bfSec);
-  }
-  container._bfSec = bfSec;
-}
-
-function appendExtraTasksSection(sec, savedExtras, prefix) {
-  savedExtras.forEach(function(et) {
-    var color = et.color || TASK_COLORS[Math.floor(Math.random()*TASK_COLORS.length)];
-    appendExtraTaskRow(sec, et, color, prefix);
+  (ganttData.extraTasks || []).forEach(function(et) {
+    appendExtraTaskRow(tasksSec, et, et.color || TASK_COLORS[0]);
   });
 
   var addBtn = document.createElement("button");
   addBtn.className = "btn-add-task"; addBtn.textContent = "+ Ajouter une tache";
   addBtn.addEventListener("click", function() {
-    var existing = document.getElementById("add-task-popup-"+prefix);
+    var existing = document.getElementById("add-task-popup");
     if (existing) { existing.remove(); return; }
     var popup = document.createElement("div");
-    popup.id = "add-task-popup-"+prefix;
+    popup.id = "add-task-popup";
     popup.style.cssText = "background:#fff;border:1.5px solid #1a3a6b;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:10px;margin:6px 0;display:flex;gap:10px;";
     var btnBC = document.createElement("button");
     btnBC.textContent = "Bout Chaud";
     btnBC.style.cssText = "flex:1;padding:10px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;";
     btnBC.addEventListener("click", function() {
-      var idx = sec._extraFields.length;
-      var color = TASK_COLORS[(TASKS_BOUT_CHAUD.length + idx) % TASK_COLORS.length];
-      appendExtraTaskRow(sec, {group:"boutchaud"}, color, prefix);
-      popup.remove();
+      var color = TASK_COLORS[(TASKS_RONDELLE.length + tasksSec._extraFields.length) % TASK_COLORS.length];
+      appendExtraTaskRow(tasksSec, {group:"boutchaud"}, color); popup.remove();
     });
     var btnBF = document.createElement("button");
     btnBF.textContent = "Bout Froid";
     btnBF.style.cssText = "flex:1;padding:10px;background:"+BOUT_FROID_COLOR+";color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;";
     btnBF.addEventListener("click", function() {
       var bfColors = ["#f1c40f","#64748b","#795548","#2e86ab"];
-      var idx = sec._extraFields.filter(function(f){return f.group==="boutfroid";}).length;
-      appendExtraTaskRow(sec, {group:"boutfroid"}, bfColors[idx%4], prefix);
-      popup.remove();
+      var idx = tasksSec._extraFields.filter(function(f){return f.group==="boutfroid";}).length;
+      appendExtraTaskRow(tasksSec, {group:"boutfroid"}, bfColors[idx%4]); popup.remove();
     });
     popup.appendChild(btnBC); popup.appendChild(btnBF);
-    sec.insertBefore(popup, addBtn);
+    tasksSec.insertBefore(popup, addBtn);
   });
-  sec.appendChild(addBtn);
+  tasksSec.appendChild(addBtn);
+  container.appendChild(tasksSec);
+  container._tasksSec = tasksSec;
+
+  // Bout Chaud 2 - section separee avec titre machine
+  var bc2FormSec = document.getElementById("bc2-form-section");
+  if (bc2FormSec) {
+    bc2FormSec.innerHTML = "";
+    var bc2Inner = document.createElement("div");
+    bc2Inner.className = "tasks-sec"; bc2Inner.style.borderColor = "#c0392b";
+    var bc2Hd = document.createElement("div"); bc2Hd.className = "tasks-sec-hd"; bc2Hd.style.background = "#c0392b";
+    bc2Hd.textContent = "BOUT CHAUD 2";
+    bc2Inner.appendChild(bc2Hd);
+    // Champ titre machine BC2
+    var m2Row = document.createElement("div");
+    m2Row.style.cssText = "padding:8px 12px;display:flex;align-items:center;gap:8px;background:#fff3f3;border-bottom:1px solid #f0d0d0;";
+    var m2Lbl = document.createElement("label"); m2Lbl.textContent = "Machine :"; m2Lbl.style.cssText = "font-size:13px;font-weight:700;color:#c0392b;white-space:nowrap;";
+    var m2Inp = document.createElement("input"); m2Inp.type = "text"; m2Inp.id = "f-machine2-name";
+    m2Inp.value = ganttData.machine2 || "";
+    m2Inp.placeholder = "ex : Machine 232";
+    m2Inp.style.cssText = "flex:1;border:1px solid #e0e0e5;border-radius:8px;padding:6px 10px;font-size:13px;font-family:Arial,sans-serif;outline:none;";
+    m2Row.appendChild(m2Lbl); m2Row.appendChild(m2Inp);
+    bc2Inner.appendChild(m2Row);
+    bc2Inner._taskFields = {}; bc2Inner._extraFields = [];
+    TASKS_RONDELLE.forEach(function(task, idx) {
+      var tv = (ganttData.tasks2 && ganttData.tasks2[task.id]) ? ganttData.tasks2[task.id] : {};
+      appendTaskRow(bc2Inner, task.id, task.machine, task.qui, tv, TASK_COLORS[idx % TASK_COLORS.length]);
+    });
+    var bfSep2 = document.createElement("div");
+    bfSep2.style.cssText = "background:"+BOUT_FROID_COLOR+";color:#fff;font-size:12px;font-weight:700;padding:8px 12px;letter-spacing:.5px;";
+    bfSep2.textContent = "BOUT FROID"; bc2Inner.appendChild(bfSep2);
+    TASKS_BOUT_FROID.forEach(function(task) {
+      var tv = (ganttData.tasks2 && ganttData.tasks2[task.id]) ? ganttData.tasks2[task.id] : {};
+      tv._labelDebut = task.labelDebut; tv._labelFin = task.labelFin;
+      appendTaskRow(bc2Inner, task.id+"_2", task.machine, task.qui, tv, task.color);
+    });
+    (ganttData.extraTasks2 || []).forEach(function(et) {
+      appendExtraTaskRow(bc2Inner, et, et.color || TASK_COLORS[0], true);
+    });
+    var addBtn2 = document.createElement("button");
+    addBtn2.className = "btn-add-task"; addBtn2.textContent = "+ Ajouter une tache";
+    addBtn2.addEventListener("click", function() {
+      var existing = document.getElementById("add-task-popup-2");
+      if (existing) { existing.remove(); return; }
+      var popup = document.createElement("div"); popup.id = "add-task-popup-2";
+      popup.style.cssText = "background:#fff;border:1.5px solid #c0392b;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:10px;margin:6px 0;display:flex;gap:10px;";
+      var btnBC = document.createElement("button"); btnBC.textContent = "Bout Chaud";
+      btnBC.style.cssText = "flex:1;padding:10px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;";
+      btnBC.addEventListener("click", function() {
+        var color = TASK_COLORS[(TASKS_RONDELLE.length + bc2Inner._extraFields.length) % TASK_COLORS.length];
+        appendExtraTaskRow(bc2Inner, {group:"boutchaud"}, color, true); popup.remove();
+      });
+      var btnBF = document.createElement("button"); btnBF.textContent = "Bout Froid";
+      btnBF.style.cssText = "flex:1;padding:10px;background:"+BOUT_FROID_COLOR+";color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;";
+      btnBF.addEventListener("click", function() {
+        var bfColors = ["#f1c40f","#64748b","#795548","#2e86ab"];
+        var idx = bc2Inner._extraFields.filter(function(f){return f.group==="boutfroid";}).length;
+        appendExtraTaskRow(bc2Inner, {group:"boutfroid"}, bfColors[idx%4], true); popup.remove();
+      });
+      popup.appendChild(btnBC); popup.appendChild(btnBF);
+      bc2Inner.insertBefore(popup, addBtn2);
+    });
+    bc2Inner.appendChild(addBtn2);
+    bc2FormSec.appendChild(bc2Inner);
+    container._bc2Sec = bc2Inner;
+    bc2FormSec.style.display = bc2Active ? "block" : "none";
+  }
 }
 
 function buildTargetSection(key, label, color, saved) {
@@ -437,7 +341,7 @@ function appendTaskRow(sec, taskId, machineName, quiDefault, tv, color) {
   sec.appendChild(row);
 }
 
-function appendExtraTaskRow(sec, et, color, prefix) {
+function appendExtraTaskRow(sec, et, color, isBC2) {
   var row = document.createElement("div"); row.className = "task-row";
   var top = document.createElement("div"); top.className = "task-row-top";
   var colorBar = document.createElement("div"); colorBar.className = "task-color-bar"; colorBar.style.background = color;
@@ -451,7 +355,7 @@ function appendExtraTaskRow(sec, et, color, prefix) {
   delBtn.addEventListener("click", function() {
     row.remove();
     sec._extraFields = sec._extraFields.filter(function(f) { return f.row !== row; });
-    autoSaveExtras(sec, prefix);
+    autoSaveExtras(isBC2);
   });
   top.appendChild(colorBar); top.appendChild(nameInp); top.appendChild(whoInp); top.appendChild(delBtn);
   row.appendChild(top);
@@ -459,23 +363,87 @@ function appendExtraTaskRow(sec, et, color, prefix) {
   var slotsWrap = buildSlotSystem(row, cmtContainer, getSavedSlots(et));
   row.appendChild(slotsWrap); row.appendChild(cmtContainer);
   row._nameInp = nameInp; row._whoInp = whoInp;
-  var etGroup = et.group || "boutchaud";
-  sec._extraFields.push({color:color, row:row, group:etGroup});
+  sec._extraFields.push({color:color, row:row, group:et.group||"boutchaud"});
   sec.appendChild(row);
 }
 
-// ── CHAMPS TEMPS ──────────────────────────────────────────────────────────────
+// ── SYSTEME DE CRENEAUX ───────────────────────────────────────────────────────
+function buildSlotSystem(holder, container, savedSlots, labelDebut, labelFin) {
+  holder._slots = [];
+  var slotsWrap = document.createElement("div"); slotsWrap.className = "task-row-times";
+  var addBtn = document.createElement("button"); addBtn.className = "btn-add-slot"; addBtn.textContent = "+";
+  var removeBtn = document.createElement("button"); removeBtn.className = "btn-add-slot"; removeBtn.textContent = "-";
+  removeBtn.style.background = "#e74c3c"; removeBtn.style.display = "none";
 
+  function refreshBtns() {
+    addBtn.style.display = holder._slots.length >= MAX_SLOTS ? "none" : "";
+    removeBtn.style.display = holder._slots.length <= 1 ? "none" : "";
+  }
+
+  function addSlot(sh, sm, eh, em, comment) {
+    var n = holder._slots.length;
+    if (n > 0) {
+      var sep = document.createElement("span"); sep.className = "slot-sep";
+      sep.style.cssText = "font-size:11px;color:#6c6c70;margin:0 4px;"; sep.textContent = "puis";
+      slotsWrap.insertBefore(sep, addBtn);
+    }
+    var slotEl = makeSlotRow(sh||"", sm||"", eh||"", em||"", n===0?labelDebut:null, n===0?labelFin:null);
+    slotsWrap.insertBefore(slotEl, addBtn);
+    var cmtTA = makeTextarea("Commentaire creneau "+(n+1)+"...", comment||"");
+    var cmtWrap = document.createElement("div"); cmtWrap.className = "task-comment-wrap"; cmtWrap.appendChild(cmtTA);
+    container.appendChild(cmtWrap);
+    holder._slots.push({slotEl:slotEl, cmtTA:cmtTA, cmtWrap:cmtWrap});
+    refreshBtns();
+  }
+
+  addBtn.addEventListener("click", function() { addSlot("","","",""); });
+  removeBtn.addEventListener("click", function() {
+    if (holder._slots.length <= 1) return;
+    var last = holder._slots.pop();
+    last.slotEl.remove(); last.cmtWrap.remove();
+    var seps = slotsWrap.querySelectorAll("span.slot-sep");
+    if (seps.length > 0) seps[seps.length-1].remove();
+    refreshBtns();
+  });
+  slotsWrap.appendChild(addBtn); slotsWrap.appendChild(removeBtn);
+
+  if (savedSlots && savedSlots.length > 0) {
+    savedSlots.forEach(function(s) { addSlot(s.sh, s.sm, s.eh, s.em, s.comment); });
+  } else { addSlot("","","",""); }
+
+  return slotsWrap;
+}
+
+function readSlots(holder) {
+  var d = {}; if (!holder._slots) return d;
+  var keys = [["sh","sm","eh","em","comment"],["sh2","sm2","eh2","em2","comment2"],["sh3","sm3","eh3","em3","comment3"],["sh4","sm4","eh4","em4","comment4"]];
+  holder._slots.forEach(function(s, i) {
+    if (i >= keys.length) return;
+    var k = keys[i];
+    d[k[0]]=s.slotEl._sF._getH(); d[k[1]]=s.slotEl._sF._getM();
+    d[k[2]]=s.slotEl._eF._getH(); d[k[3]]=s.slotEl._eF._getM();
+    d[k[4]]=s.cmtTA.value;
+  });
+  return d;
+}
+
+function getSavedSlots(obj) {
+  var slots = [{sh:obj.sh, sm:obj.sm, eh:obj.eh, em:obj.em, comment:obj.comment||""}];
+  if (obj.sh2||obj.eh2) slots.push({sh:obj.sh2, sm:obj.sm2, eh:obj.eh2, em:obj.em2, comment:obj.comment2||""});
+  if (obj.sh3||obj.eh3) slots.push({sh:obj.sh3, sm:obj.sm3, eh:obj.eh3, em:obj.em3, comment:obj.comment3||""});
+  if (obj.sh4||obj.eh4) slots.push({sh:obj.sh4, sm:obj.sm4, eh:obj.eh4, em:obj.em4, comment:obj.comment4||""});
+  return slots;
+}
+
+// ── CHAMPS TEMPS ──────────────────────────────────────────────────────────────
 function makeSlotRow(sh, sm, eh, em, labelDebut, labelFin) {
   var wrap = document.createElement("div"); wrap.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap;";
   var sGrp = document.createElement("div"); sGrp.className = "time-group";
   var sLbl = document.createElement("label"); sLbl.textContent = labelDebut||"Debut";
-  var sF = makeTimeField(sh, sm);
-  sGrp.appendChild(sLbl); sGrp.appendChild(sF);
+  var sF = makeTimeField(sh, sm); sGrp.appendChild(sLbl); sGrp.appendChild(sF);
   var eGrp = document.createElement("div"); eGrp.className = "time-group";
   var eLbl = document.createElement("label"); eLbl.textContent = labelFin||"Fin";
-  var eF = makeTimeField(eh, em);
-  eGrp.appendChild(eLbl); eGrp.appendChild(eF);
+  var eF = makeTimeField(eh, em); eGrp.appendChild(eLbl); eGrp.appendChild(eF);
   var prev = document.createElement("span"); prev.className = "time-preview";
   function updPrev() {
     var s=getTV(sF._getH(),sF._getM()), e=getTV(eF._getH(),eF._getM());
@@ -496,16 +464,12 @@ function makeTimeField(hVal, mVal) {
     this.value = this.value.replace(/\D/g,"").slice(0,2);
     if (this.value.length===2) { if(parseInt(this.value)>23) this.value="23"; mInp.focus(); }
   });
-  hInp.addEventListener("blur", function() {
-    if (this.value !== "") { var v=parseInt(this.value); if(v>23)this.value="23"; if(v<0)this.value="0"; }
-  });
+  hInp.addEventListener("blur", function() { if (this.value !== "") { var v=parseInt(this.value); if(v>23)this.value="23"; if(v<0)this.value="0"; } });
   mInp.addEventListener("input", function() {
     this.value = this.value.replace(/\D/g,"").slice(0,2);
     if (this.value.length===2 && parseInt(this.value)>59) this.value="59";
   });
-  mInp.addEventListener("blur", function() {
-    if (this.value !== "") { var v=parseInt(this.value); if(v>59)this.value="59"; if(v<0)this.value="0"; }
-  });
+  mInp.addEventListener("blur", function() { if (this.value !== "") { var v=parseInt(this.value); if(v>59)this.value="59"; if(v<0)this.value="0"; } });
   wrap.appendChild(hInp); wrap.appendChild(sep); wrap.appendChild(mInp);
   wrap._getH = function() { return hInp.value; };
   wrap._getM = function() { return mInp.value; };
@@ -513,8 +477,7 @@ function makeTimeField(hVal, mVal) {
 }
 
 function makeTextarea(placeholder, value) {
-  var ta = document.createElement("textarea");
-  ta.placeholder = placeholder; ta.value = value||""; ta.rows = 1;
+  var ta = document.createElement("textarea"); ta.placeholder = placeholder; ta.value = value||""; ta.rows = 1;
   function resize() { ta.style.height="auto"; ta.style.height=ta.scrollHeight+"px"; }
   ta.addEventListener("input", resize); setTimeout(resize, 0);
   return ta;
@@ -532,47 +495,53 @@ function fmtDur(s,e) { var d=e-s; if(d<=0) return "--"; var h=Math.floor(d/60),m
 function encCmt(str) { if(!str) return ""; return str.replace(/\\/g,"\\\\").replace(/'/g,"&#39;").replace(/"/g,"&quot;").replace(/\n/g,"\\n"); }
 
 // ── COLLECTE ──────────────────────────────────────────────────────────────────
-
 function collectData() {
   var container = document.getElementById("form-sections");
-  var out = { targets:{}, tasks:{}, tasks2:{}, extraTasks:[], extraTasks2:[], bc2Active:bc2Active };
+  var out = { targets:{}, tasks:{}, extraTasks:[], tasks2:{}, extraTasks2:[], bc2Active:bc2Active, machine2:"" };
+  var m2inp = document.getElementById("f-machine2-name");
+  if (m2inp) out.machine2 = m2inp.value.trim();
 
   ["grand_t1","petit_t1","rondelle"].forEach(function(key) {
     var sec = container.querySelector('[data-target-key="'+key+'"]');
-    if (!sec) return;
-    out.targets[key] = readSlots(sec);
+    if (sec) out.targets[key] = readSlots(sec);
   });
 
-  var bc1Sec = container._bc1Sec;
-  if (bc1Sec) {
-    TASKS_BOUT_CHAUD.forEach(function(task) {
-      var f = bc1Sec._taskFields[task.id]; if (!f) return;
+  var tasksSec = container._tasksSec;
+  if (tasksSec) {
+    TASKS_RONDELLE.forEach(function(task) {
+      var f = tasksSec._taskFields[task.id]; if (!f) return;
       out.tasks[task.id] = readSlots(f.row);
     });
     TASKS_BOUT_FROID.forEach(function(task) {
-      var f = container._bfSec ? container._bfSec._taskFields[task.id] : null; if (!f) return;
+      var f = tasksSec._taskFields[task.id]; if (!f) return;
       out.tasks[task.id] = readSlots(f.row);
     });
-    bc1Sec._extraFields.forEach(function(et) {
+    tasksSec._extraFields.forEach(function(et) {
       var name = et.row._nameInp ? et.row._nameInp.value.trim() : "";
       if (!name) return;
-      var d = readSlots(et.row);
-      d.machine = name; d.qui = et.row._whoInp ? et.row._whoInp.value.trim() : "";
+      var d = readSlots(et.row); d.machine = name;
+      d.qui = et.row._whoInp ? et.row._whoInp.value.trim() : "";
       d.group = et.group || "boutchaud"; d.color = et.color || "";
       out.extraTasks.push(d);
     });
   }
 
+  // Bout Chaud 2
   if (bc2Active && container._bc2Sec) {
-    TASKS_BOUT_CHAUD.forEach(function(task) {
-      var f = container._bc2Sec._taskFields[task.id]; if (!f) return;
+    var bc2Sec = container._bc2Sec;
+    TASKS_RONDELLE.forEach(function(task) {
+      var f = bc2Sec._taskFields[task.id]; if (!f) return;
       out.tasks2[task.id] = readSlots(f.row);
     });
-    container._bc2Sec._extraFields.forEach(function(et) {
+    TASKS_BOUT_FROID.forEach(function(task) {
+      var f = bc2Sec._taskFields[task.id+"_2"]; if (!f) return;
+      out.tasks2[task.id] = readSlots(f.row);
+    });
+    bc2Sec._extraFields.forEach(function(et) {
       var name = et.row._nameInp ? et.row._nameInp.value.trim() : "";
       if (!name) return;
-      var d = readSlots(et.row);
-      d.machine = name; d.qui = et.row._whoInp ? et.row._whoInp.value.trim() : "";
+      var d = readSlots(et.row); d.machine = name;
+      d.qui = et.row._whoInp ? et.row._whoInp.value.trim() : "";
       d.group = et.group || "boutchaud"; d.color = et.color || "";
       out.extraTasks2.push(d);
     });
@@ -582,57 +551,109 @@ function collectData() {
 }
 
 // ── SAUVEGARDE ────────────────────────────────────────────────────────────────
+async function ensureSession() {
+  var date = document.getElementById("f-date").value;
+  var machine = document.getElementById("f-machine-name").value.trim();
+  if (!date || !machine) return null;
+  if (currentSessId) return currentSessId;
+  var existing = Object.entries(allSessions).find(function(e) { return e[1].date===date && e[1].machine===machine; });
+  if (existing) { currentSessId = existing[0]; return currentSessId; }
+  var sessId = "sess_"+Date.now();
+  var dl = new Date(date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"short",year:"numeric"});
+  await set(ref(db,"sessions/"+sessId), {
+    date:date, machine:machine,
+    ganttData:{ targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, extraTasks:[] },
+    title:machine+" - "+dl, savedAt:Date.now()
+  });
+  currentSessId = sessId;
+  return sessId;
+}
 
 async function saveSession() {
-  var data = collectData();
   var date = document.getElementById("f-date").value;
   var machine = document.getElementById("f-machine-name").value.trim();
   if (!date || !machine) { alert("Veuillez remplir la date et la machine."); return; }
 
+  var sessId = await ensureSession();
+  if (!sessId) return;
+
+  var data = collectData();
   var dl = new Date(date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"short",year:"numeric"});
-  var existingId = window._editingSessionId;
-  if (!existingId) {
-    var existing = Object.entries(allSessions).find(function(e) { return e[1].date===date && e[1].machine===machine; });
-    if (existing) existingId = existing[0];
+
+  // Sauvegarder targets - toujours (seul PC qui remplit les targets)
+  for (var tkey of ["grand_t1","petit_t1","rondelle"]) {
+    await set(ref(db,"sessions/"+sessId+"/ganttData/targets/"+tkey), data.targets[tkey]||{});
   }
-  var sessId = existingId || "sess_"+Date.now();
-  await set(ref(db,"sessions/"+sessId), { date:date, machine:machine, ganttData:data, title:machine+" - "+dl, savedAt:Date.now() });
-  window._editingSessionId = sessId;
+
+  // Sauvegarder uniquement les taches remplies sur ce PC
+  for (var taskId of ALL_TASK_IDS) {
+    var t = data.tasks[taskId] || {};
+    var hasData = t.sh || t.eh || t.comment || t.sh2 || t.eh2 || t.sh3 || t.eh3 || t.sh4 || t.eh4;
+    if (hasData) {
+      await set(ref(db,"sessions/"+sessId+"/ganttData/tasks/"+taskId), t);
+    }
+  }
+
+  // Sauvegarder les extras BC1
+  if (data.extraTasks && data.extraTasks.length > 0) {
+    await set(ref(db,"sessions/"+sessId+"/ganttData/extraTasks"), data.extraTasks);
+  }
+
+  // Sauvegarder BC2 si actif
+  await set(ref(db,"sessions/"+sessId+"/ganttData/bc2Active"), bc2Active);
+  await set(ref(db,"sessions/"+sessId+"/ganttData/machine2"), data.machine2||"");
+  if (bc2Active) {
+    for (var taskId2 of ALL_TASK_IDS) {
+      var t2 = data.tasks2[taskId2] || {};
+      var hasData2 = t2.sh || t2.eh || t2.comment || t2.sh2 || t2.eh2;
+      if (hasData2) {
+        await set(ref(db,"sessions/"+sessId+"/ganttData/tasks2/"+taskId2), t2);
+      }
+    }
+    if (data.extraTasks2 && data.extraTasks2.length > 0) {
+      await set(ref(db,"sessions/"+sessId+"/ganttData/extraTasks2"), data.extraTasks2);
+    }
+  }
+
+  // Metadonnees
+  await set(ref(db,"sessions/"+sessId+"/machine"), machine);
+  await set(ref(db,"sessions/"+sessId+"/date"), date);
+  await set(ref(db,"sessions/"+sessId+"/title"), machine+" - "+dl);
+  await set(ref(db,"sessions/"+sessId+"/savedAt"), Date.now());
 
   showToast("Seance enregistree !", "#34c759");
-  renderGantt(date, machine, data);
+
+  // Lire les donnees completes depuis Firebase pour afficher le Gantt
+  var snap = await get(ref(db,"sessions/"+sessId));
+  var s = snap.val();
+  if (s && s.ganttData) {
+    ganttData = s.ganttData;
+    renderGantt(date, machine, s.ganttData);
+  }
   setTimeout(function() { document.getElementById("gantt-section").scrollIntoView({behavior:"smooth"}); }, 100);
-  document.getElementById("f-machine-name").value = machine;
-  document.getElementById("f-date").value = date;
 }
 
-async function autoSaveExtras(sec, prefix) {
-  var date = document.getElementById("f-date").value;
-  var machine = document.getElementById("f-machine-name").value.trim();
-  if (!date || !machine) return;
-  var existing = Object.entries(allSessions).find(function(e) { return e[1].date===date && e[1].machine===machine; });
-  if (!existing) return;
+async function autoSaveExtras(isBC2) {
+  if (!currentSessId) return;
   var data = collectData();
-  await set(ref(db,"sessions/"+existing[0]+"/ganttData"), data);
+  if (isBC2) {
+    await set(ref(db,"sessions/"+currentSessId+"/ganttData/extraTasks2"), data.extraTasks2||[]);
+  } else {
+    await set(ref(db,"sessions/"+currentSessId+"/ganttData/extraTasks"), data.extraTasks||[]);
+  }
   showToast("Tache supprimee !", "#e74c3c");
 }
 
 async function newSession() {
   if (!confirm("Repartir a zero ?")) return;
-  justifications = []; window._editingSessionId = null; bc2Active = false;
-  document.getElementById("f-date").value = new Date().toISOString().slice(0,10);
-  document.getElementById("f-machine-name").value = "";
-  ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, tasks2:{}, extraTasks:[], extraTasks2:[], bc2Active:false };
-  var btn = document.getElementById("toggle-bc2-btn");
-  btn.textContent = "+ Activer Bout Chaud 2"; btn.style.background = "#fa8072";
-  document.getElementById("bc2-section").style.display = "none";
+  justifications = [];
+  resetState();
   buildForm();
   document.getElementById("gantt-container").innerHTML = '<div class="empty-gantt">Remplissez le formulaire et enregistrez pour afficher le Gantt</div>';
   document.getElementById("gantt-section").style.display = "none";
 }
 
 // ── HISTORIQUE ────────────────────────────────────────────────────────────────
-
 function renderHistory(sessions) {
   var list = document.getElementById("history-list");
   var arr = Object.entries(sessions).sort(function(a,b) {
@@ -651,10 +672,9 @@ function renderHistory(sessions) {
   var html = pageArr.map(function(entry) {
     var id=entry[0], s=entry[1];
     var dl = s.date ? new Date(s.date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"short",year:"numeric"}) : "";
-    var bc2Badge = s.ganttData && s.ganttData.bc2Active ? '<span style="background:#c0392b;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:6px;">BC2</span>' : '';
     return '<div class="history-item">'+
       '<div class="history-item-left">'+
-      '<div class="history-item-title">'+(s.machine||"Seance")+bc2Badge+'</div>'+
+      '<div class="history-item-title">'+(s.machine||"Seance")+'</div>'+
       '<div class="history-item-sub">'+dl+'</div>'+
       '</div>'+
       '<div class="history-item-actions">'+
@@ -686,19 +706,24 @@ async function loadHistorySession(id) {
   var d = snap.val(); if (!d) return;
   document.getElementById("f-date").value = d.date||"";
   document.getElementById("f-machine-name").value = d.machine||"";
-  ganttData = d.ganttData || { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, tasks2:{}, extraTasks:[], extraTasks2:[], bc2Active:false };
+  ganttData = d.ganttData || {};
+  ganttData.targets = ganttData.targets || {grand_t1:{},petit_t1:{},rondelle:{}};
+  ganttData.tasks = ganttData.tasks || {};
+  ganttData.extraTasks = ganttData.extraTasks || [];
+  ganttData.tasks2 = ganttData.tasks2 || {};
+  ganttData.extraTasks2 = ganttData.extraTasks2 || [];
   bc2Active = ganttData.bc2Active || false;
-  window._editingSessionId = id;
+  machine2 = ganttData.machine2 || "";
+  currentSessId = id;
+  // Mettre a jour le bouton toggle
   var btn = document.getElementById("toggle-bc2-btn");
-  if (bc2Active) {
-    btn.textContent = "Desactiver Bout Chaud 2"; btn.style.background = "#c0392b";
-    document.getElementById("bc2-section").style.display = "block";
-  } else {
-    btn.textContent = "+ Activer Bout Chaud 2"; btn.style.background = "#fa8072";
-    document.getElementById("bc2-section").style.display = "none";
+  var sec = document.getElementById("bc2-form-section");
+  if (btn && sec) {
+    if (bc2Active) { btn.textContent = "- BC2"; btn.style.background = "#c0392b"; sec.style.display = "block"; }
+    else { btn.textContent = "+ BC2"; btn.style.background = "#fa8072"; sec.style.display = "none"; }
   }
   buildForm();
-  renderGantt(d.date, d.machine, d.ganttData||{});
+  renderGantt(d.date, d.machine, ganttData);
   setTimeout(function() { document.getElementById("gantt-section").scrollIntoView({behavior:"smooth"}); }, 200);
 }
 
@@ -707,19 +732,30 @@ async function editHistorySession(id) {
   var d = snap.val(); if (!d) return;
   document.getElementById("f-date").value = d.date||"";
   document.getElementById("f-machine-name").value = d.machine||"";
-  ganttData = d.ganttData || { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, tasks2:{}, extraTasks:[], extraTasks2:[], bc2Active:false };
+  ganttData = d.ganttData || {};
+  ganttData.targets = ganttData.targets || {grand_t1:{},petit_t1:{},rondelle:{}};
+  ganttData.tasks = ganttData.tasks || {};
+  ganttData.extraTasks = ganttData.extraTasks || [];
+  ganttData.tasks2 = ganttData.tasks2 || {};
+  ganttData.extraTasks2 = ganttData.extraTasks2 || [];
   bc2Active = ganttData.bc2Active || false;
+  machine2 = ganttData.machine2 || "";
+  var btn2 = document.getElementById("toggle-bc2-btn");
+  var sec2 = document.getElementById("bc2-form-section");
+  if (btn2 && sec2) {
+    if (bc2Active) { btn2.textContent = "- BC2"; btn2.style.background = "#c0392b"; sec2.style.display = "block"; }
+    else { btn2.textContent = "+ BC2"; btn2.style.background = "#fa8072"; sec2.style.display = "none"; }
+  }
+  currentSessId = id;
   buildForm();
-  window._editingSessionId = id;
   document.querySelector(".info-sec").scrollIntoView({behavior:"smooth"});
   showToast("Seance chargee - modifiez puis enregistrez", "#1a3a6b");
 }
 
-async function deleteSession(id) { if (!confirm("Supprimer cette seance ?")) return; await remove(ref(db,"sessions/"+id)); }
-async function deleteAllHistory() { if (!confirm("Supprimer tout l historique ?")) return; await remove(ref(db,"sessions")); }
+async function deleteSession(id) { if (!confirm("Supprimer cette seance ?")) return; await remove(ref(db,"sessions/"+id)); if (currentSessId === id) { resetState(); buildForm(); } }
+async function deleteAllHistory() { if (!confirm("Supprimer tout l historique ?")) return; await remove(ref(db,"sessions")); resetState(); buildForm(); }
 
 // ── GANTT ─────────────────────────────────────────────────────────────────────
-
 function fmtCmtCell(cmts, color) {
   var valid = cmts.filter(function(c){return c&&c.trim();});
   if (!valid.length) return '<td class="info cmt-col"></td>';
@@ -728,22 +764,16 @@ function fmtCmtCell(cmts, color) {
     if (i > 0) html += '<div class="cmt-col-sep"></div>';
     html += '<div class="cmt-col-text">'+c.replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/\\n/g,"<br>")+'</div>';
   });
-  html += '</td>';
-  return html;
+  return html + '</td>';
 }
 
 function renderGantt(date, machine, data) {
   var container = document.getElementById("gantt-container");
   var targets = data.targets || {};
   var tasks = data.tasks || {};
-  var tasks2 = data.tasks2 || {};
-  var hasBc2 = data.bc2Active || false;
-
   var extras = (data.extraTasks||[]).slice();
-  var extras2 = (data.extraTasks2||[]).slice();
   var extrasBoutChaud = extras.filter(function(et){ return (et.group||"boutchaud")==="boutchaud"; });
   var extrasBoutFroid = extras.filter(function(et){ return et.group==="boutfroid"; });
-  var extrasBoutChaud2 = extras2.filter(function(et){ return (et.group||"boutchaud")==="boutchaud"; });
 
   allTasks = {};
   var minT=Infinity, maxT=-Infinity;
@@ -753,7 +783,6 @@ function renderGantt(date, machine, data) {
     if(s!==null&&s>0) minT=Math.min(minT,s);
     if(e!==null&&e>0) maxT=Math.max(maxT,e);
   }
-
   function regObj(obj) {
     regT(obj.sh,obj.sm,obj.eh,obj.em);
     if(obj.sh2||obj.eh2) regT(obj.sh2,obj.sm2,obj.eh2,obj.em2);
@@ -762,11 +791,16 @@ function renderGantt(date, machine, data) {
   }
 
   ["grand_t1","petit_t1","rondelle"].forEach(function(k){ regObj(targets[k]||{}); });
-  TASKS_BOUT_CHAUD.forEach(function(t){ regObj(tasks[t.id]||{}); });
-  if (hasBc2) TASKS_BOUT_CHAUD.forEach(function(t){ regObj(tasks2[t.id]||{}); });
+  TASKS_RONDELLE.forEach(function(t){ regObj(tasks[t.id]||{}); });
   TASKS_BOUT_FROID.forEach(function(t){ regObj(tasks[t.id]||{}); });
   extras.forEach(function(et){ regObj(et); });
-  if (hasBc2) extras2.forEach(function(et){ regObj(et); });
+  var tasks2_rg = data.tasks2 || {};
+  var extras2_rg = data.extraTasks2 || [];
+  if (data.bc2Active) {
+    TASKS_RONDELLE.forEach(function(t){ regObj(tasks2_rg[t.id]||{}); });
+    TASKS_BOUT_FROID.forEach(function(t){ regObj(tasks2_rg[t.id]||{}); });
+    extras2_rg.forEach(function(et){ regObj(et); });
+  }
 
   if (!isFinite(minT)) minT=360; if (!isFinite(maxT)) maxT=minT+120;
   minT=Math.max(280,minT-10); maxT=maxT+10;
@@ -774,8 +808,8 @@ function renderGantt(date, machine, data) {
 
   var total=maxT-minT, slotMin=10, slots=total/slotMin;
   var slotW=Math.max(35,Math.min(90,900/slots));
-
   var dateStr=date?new Date(date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"}):"";
+
   document.getElementById("gantt-machine-title").textContent = machine||"Changement - Temp/Machine";
   document.getElementById("gantt-subtitle").textContent = "SGD Pharma - Sucy-en-Brie"+(dateStr?" - "+dateStr:"");
 
@@ -793,8 +827,7 @@ function renderGantt(date, machine, data) {
     var hh=Math.floor(m/60).toString().padStart(2,"0"),mm2=(m%60).toString().padStart(2,"0");
     h+='<th style="width:'+slotW+'px;font-size:10px;color:#555;font-weight:400">'+(mm2==="00"?hh+"h":mm2)+'</th>';
   }
-  h+='</tr>';
-  h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#1a3a6b;color:#fff;font-weight:700;font-size:13px;padding:7px 10px;text-align:center;">'+machine+(dateStr?" - "+dateStr:"")+'</td></tr>';
+  h+='</tr><tr><td colspan="'+(5+slots+1)+'" style="background:#1a3a6b;color:#fff;font-weight:700;font-size:13px;padding:7px 10px;text-align:center;">'+machine+(dateStr?" - "+dateStr:"")+'</td></tr>';
 
   // TARGET
   targetDefs.forEach(function(td) {
@@ -813,7 +846,7 @@ function renderGantt(date, machine, data) {
         var sx=toMin(getTV(sl[0]||"",sl[1]||"")), ex=toMin(getTV(sl[2]||"",sl[3]||""));
         if(sx!==null&&ex!==null&&ex>sx){
           var lpx=((sx-minT)/total)*100, wpx=((ex-sx)/total)*100;
-          bar+='<div class="gantt-bar" style="left:'+lpx+'%;width:'+wpx+'%;background:#fa8072;opacity:.8;" data-uid="'+uid+sl[5]+'" data-label="'+td.label+' ('+sl[5].replace("_",""+')" data-qui="--" data-start="'+getTV(sl[0]||"",sl[1]||"")+'" data-end="'+getTV(sl[2]||"",sl[3]||"")+'" data-color="#fa8072" data-cmt="'+encCmt(sl[4]||"")+'"></div>');
+          bar+='<div class="gantt-bar" style="left:'+lpx+'%;width:'+wpx+'%;background:#fa8072;opacity:.8;" data-uid="'+uid+sl[5]+'" data-label="'+td.label+'" data-qui="--" data-start="'+getTV(sl[0]||"",sl[1]||"")+'" data-end="'+getTV(sl[2]||"",sl[3]||"")+'" data-color="#fa8072" data-cmt="'+encCmt(sl[4]||"")+'"></div>';
         }
       }
     });
@@ -830,60 +863,53 @@ function renderGantt(date, machine, data) {
   });
   h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#e8edf5;height:4px;"></td></tr>';
 
-  function renderTaskRow(task, t, idx, uid, color, quiDisplay, rowIdx, isBF) {
+  function makeBar(t, uid, color, label, quiDisplay) {
+    var bar = "";
     var start=getTV(t.sh||"",t.sm||""), end=getTV(t.eh||"",t.em||"");
-    allTasks[uid]={machine:task.machine,qui:quiDisplay,start:start,end:end,color:color};
-    var bar="";
     var s=toMin(start), e=toMin(end);
     if(s!==null&&e!==null&&e>s){
       var lp=((s-minT)/total)*100, wp=((e-s)/total)*100;
-      bar='<div class="gantt-bar" style="left:'+lp+'%;width:'+wp+'%;background:'+color+'" data-uid="'+uid+'" data-label="'+task.machine+'" data-qui="'+quiDisplay+'" data-start="'+start+'" data-end="'+end+'" data-color="'+color+'" data-cmt="'+encCmt(t.comment||"")+'"></div>';
+      bar='<div class="gantt-bar" style="left:'+lp+'%;width:'+wp+'%;background:'+color+'" data-uid="'+uid+'" data-label="'+label+'" data-qui="'+quiDisplay+'" data-start="'+start+'" data-end="'+end+'" data-color="'+color+'" data-cmt="'+encCmt(t.comment||"")+'"></div>';
     }
     [[t.sh2,t.sm2,t.eh2,t.em2,t.comment2,"_2",.75],[t.sh3,t.sm3,t.eh3,t.em3,t.comment3,"_3",.6],[t.sh4,t.sm4,t.eh4,t.em4,t.comment4,"_4",.5]].forEach(function(sl){
       if(sl[0]||sl[2]){
         var sx=toMin(getTV(sl[0]||"",sl[1]||"")), ex=toMin(getTV(sl[2]||"",sl[3]||""));
         if(sx!==null&&ex!==null&&ex>sx){
           var lpx=((sx-minT)/total)*100, wpx=((ex-sx)/total)*100;
-          bar+='<div class="gantt-bar" style="left:'+lpx+'%;width:'+wpx+'%;background:'+color+';opacity:'+sl[6]+';" data-uid="'+uid+sl[5]+'" data-label="'+task.machine+'" data-qui="'+quiDisplay+'" data-start="'+getTV(sl[0]||"",sl[1]||"")+'" data-end="'+getTV(sl[2]||"",sl[3]||"")+'" data-color="'+color+'" data-cmt="'+encCmt(sl[4]||"")+'"></div>';
+          bar+='<div class="gantt-bar" style="left:'+lpx+'%;width:'+wpx+'%;background:'+color+';opacity:'+sl[6]+';" data-uid="'+uid+sl[5]+'" data-label="'+label+'" data-qui="'+quiDisplay+'" data-start="'+getTV(sl[0]||"",sl[1]||"")+'" data-end="'+getTV(sl[2]||"",sl[3]||"")+'" data-color="'+color+'" data-cmt="'+encCmt(sl[4]||"")+'"></div>';
         }
       }
     });
+    return {bar:bar, start:start, end:end};
+  }
+
+  function renderTaskRow(task, t, idx, isBF, rowIdx, prefix) {
+    var color = isBF ? task.color : TASK_COLORS[idx%TASK_COLORS.length];
+    var uid = "task_"+(prefix||"bc1")+"_"+task.id;
+    var quiDisplay = ganttQuiOverrides[uid]||t.qui||task.qui;
+    var res = makeBar(t, uid, color, task.machine, quiDisplay);
+    allTasks[uid]={machine:task.machine,qui:quiDisplay,start:res.start,end:res.end,color:color};
     var isSelA=selectedIds[0]===uid, isSelB=selectedIds[1]===uid;
     var rowCls=isSelA?"sel-a":isSelB?"sel-b":rowIdx%2===0?"odd":"even";
     if(isBF) rowCls+=" boutfroid-row";
     var machineName = task.machine;
-    if (isBF && task.labelDebut) {
-      machineName += '<div style="font-size:10px;color:#6c6c70;font-weight:400;margin-top:2px;">'+task.labelDebut+' — '+task.labelFin+'</div>';
-    }
+    if (isBF && task.labelDebut) machineName += '<div style="font-size:10px;color:#6c6c70;font-weight:400;margin-top:2px;">'+task.labelDebut+' — '+task.labelFin+'</div>';
     h+='<tr class="'+rowCls+'" data-uid="'+uid+'">'+
       '<td class="chk-cell info"><input type="checkbox" '+(selectedIds.includes(uid)?"checked":"")+' data-uid="'+uid+'"></td>'+
       '<td class="info machine-name"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+color+';margin-right:5px;vertical-align:middle"></span>'+machineName+'</td>'+
       '<td class="info who-cell who-editable" data-uid="'+uid+'" title="Modifier">'+quiDisplay+' [mod]</td>'+
-      '<td class="info time-cell">'+(start||"--")+'</td>'+
-      '<td class="info time-cell">'+(end||"--")+'</td>'+
-      '<td colspan="'+slots+'" class="bar-cell"><div class="bar-inner">'+bar+'</div></td>'+
+      '<td class="info time-cell">'+(res.start||"--")+'</td>'+
+      '<td class="info time-cell">'+(res.end||"--")+'</td>'+
+      '<td colspan="'+slots+'" class="bar-cell"><div class="bar-inner">'+res.bar+'</div></td>'+
       fmtCmtCell([t.comment,t.comment2,t.comment3,t.comment4],color)+
       '</tr>';
   }
 
-  function renderExtraRow(et, idx, uid, color, rowIdx, isBF) {
-    var start=getTV(et.sh||"",et.sm||""), end=getTV(et.eh||"",et.em||"");
-    allTasks[uid]={machine:et.machine||"Extra",qui:et.qui||"",start:start,end:end,color:color};
-    var bar="";
-    var s=toMin(start), e=toMin(end);
-    if(s!==null&&e!==null&&e>s){
-      var lp=((s-minT)/total)*100, wp=((e-s)/total)*100;
-      bar='<div class="gantt-bar" style="left:'+lp+'%;width:'+wp+'%;background:'+color+'" data-uid="'+uid+'" data-label="'+(et.machine||"Extra")+'" data-qui="'+(et.qui||"")+'" data-start="'+start+'" data-end="'+end+'" data-color="'+color+'" data-cmt="'+encCmt(et.comment||"")+'"></div>';
-    }
-    [[et.sh2,et.sm2,et.eh2,et.em2,et.comment2,"_2",.75],[et.sh3,et.sm3,et.eh3,et.em3,et.comment3,"_3",.6],[et.sh4,et.sm4,et.eh4,et.em4,et.comment4,"_4",.5]].forEach(function(sl){
-      if(sl[0]||sl[2]){
-        var sx=toMin(getTV(sl[0]||"",sl[1]||"")), ex=toMin(getTV(sl[2]||"",sl[3]||""));
-        if(sx!==null&&ex!==null&&ex>sx){
-          var lpx=((sx-minT)/total)*100, wpx=((ex-sx)/total)*100;
-          bar+='<div class="gantt-bar" style="left:'+lpx+'%;width:'+wpx+'%;background:'+color+';opacity:'+sl[6]+';" data-uid="'+uid+sl[5]+'" data-label="'+(et.machine||"Extra")+'" data-qui="'+(et.qui||"")+'" data-start="'+getTV(sl[0]||"",sl[1]||"")+'" data-end="'+getTV(sl[2]||"",sl[3]||"")+'" data-color="'+color+'" data-cmt="'+encCmt(sl[4]||"")+'"></div>';
-        }
-      }
-    });
+  function renderExtraRow(et, idx, isBF, rowIdx, prefix) {
+    var color = et.color || TASK_COLORS[(TASKS_RONDELLE.length+idx)%TASK_COLORS.length];
+    var uid = "extra_"+(prefix||"bc1")+"_"+(isBF?"bf":"bc")+"_"+idx;
+    var res = makeBar(et, uid, color, et.machine||"Extra", et.qui||"");
+    allTasks[uid]={machine:et.machine||"Extra",qui:et.qui||"",start:res.start,end:res.end,color:color};
     var isSelA=selectedIds[0]===uid, isSelB=selectedIds[1]===uid;
     var rowCls=isSelA?"sel-a":isSelB?"sel-b":rowIdx%2===0?"odd":"even";
     if(isBF) rowCls+=" boutfroid-row";
@@ -891,94 +917,38 @@ function renderGantt(date, machine, data) {
       '<td class="chk-cell info"><input type="checkbox" '+(selectedIds.includes(uid)?"checked":"")+' data-uid="'+uid+'"></td>'+
       '<td class="info machine-name"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+color+';margin-right:5px;vertical-align:middle"></span>'+(et.machine||"Extra")+'</td>'+
       '<td class="info who-cell">'+(et.qui||"")+'</td>'+
-      '<td class="info time-cell">'+(start||"--")+'</td>'+
-      '<td class="info time-cell">'+(end||"--")+'</td>'+
-      '<td colspan="'+slots+'" class="bar-cell"><div class="bar-inner">'+bar+'</div></td>'+
+      '<td class="info time-cell">'+(res.start||"--")+'</td>'+
+      '<td class="info time-cell">'+(res.end||"--")+'</td>'+
+      '<td colspan="'+slots+'" class="bar-cell"><div class="bar-inner">'+res.bar+'</div></td>'+
       fmtCmtCell([et.comment,et.comment2,et.comment3,et.comment4],color)+
       '</tr>';
   }
 
-  // BOUT CHAUD 1
+  // Bout Chaud 1 - ordre fixe
   h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#1a3a6b;color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT CHAUD 1</td></tr>';
-  var bc1Rows=[];
-  TASKS_BOUT_CHAUD.forEach(function(task,idx){
-    var t=tasks[task.id]||{}, start=getTV(t.sh||"",t.sm||"");
-    bc1Rows.push({type:"fixed",task:task,t:t,idx:idx,sMin:toMin(start)});
-  });
-  extrasBoutChaud.forEach(function(et,idx){
-    var start=getTV(et.sh||"",et.sm||"");
-    bc1Rows.push({type:"extra",et:et,idx:idx,sMin:toMin(start)});
-  });
-  bc1Rows.sort(function(a,b){ if(a.sMin===null)return 1; if(b.sMin===null)return -1; return a.sMin-b.sMin; });
-  bc1Rows.forEach(function(rowData,rowIdx){
-    if(rowData.type==="fixed"){
-      var task=rowData.task, t=rowData.t, idx=rowData.idx;
-      var color=TASK_COLORS[idx%TASK_COLORS.length];
-      var uid="task_bc1_"+task.id;
-      var quiDisplay=ganttQuiOverrides[uid]||t.qui||task.qui;
-      renderTaskRow(task,t,idx,uid,color,quiDisplay,rowIdx,false);
-    } else {
-      var et=rowData.et, idx=rowData.idx;
-      var color=et.color||TASK_COLORS[(TASKS_BOUT_CHAUD.length+idx)%TASK_COLORS.length];
-      var uid="extra_bc1_"+idx;
-      renderExtraRow(et,idx,uid,color,rowIdx,false);
-    }
-  });
+  TASKS_RONDELLE.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, false, idx, "bc1"); });
+  extrasBoutChaud.forEach(function(et,idx){ renderExtraRow(et, idx, false, TASKS_RONDELLE.length+idx, "bc1"); });
 
-  // BOUT CHAUD 2
-  if (hasBc2) {
-    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#c0392b;color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT CHAUD 2</td></tr>';
-    var bc2Rows=[];
-    TASKS_BOUT_CHAUD.forEach(function(task,idx){
-      var t=tasks2[task.id]||{}, start=getTV(t.sh||"",t.sm||"");
-      bc2Rows.push({type:"fixed",task:task,t:t,idx:idx,sMin:toMin(start)});
-    });
-    extrasBoutChaud2.forEach(function(et,idx){
-      var start=getTV(et.sh||"",et.sm||"");
-      bc2Rows.push({type:"extra",et:et,idx:idx,sMin:toMin(start)});
-    });
-    bc2Rows.sort(function(a,b){ if(a.sMin===null)return 1; if(b.sMin===null)return -1; return a.sMin-b.sMin; });
-    bc2Rows.forEach(function(rowData,rowIdx){
-      if(rowData.type==="fixed"){
-        var task=rowData.task, t=rowData.t, idx=rowData.idx;
-        var color=TASK_COLORS[idx%TASK_COLORS.length];
-        var uid="task_bc2_"+task.id;
-        var quiDisplay=ganttQuiOverrides[uid]||t.qui||task.qui;
-        renderTaskRow(task,t,idx,uid,color,quiDisplay,rowIdx,false);
-      } else {
-        var et=rowData.et, idx=rowData.idx;
-        var color=et.color||TASK_COLORS[(TASKS_BOUT_CHAUD.length+idx)%TASK_COLORS.length];
-        var uid="extra_bc2_"+idx;
-        renderExtraRow(et,idx,uid,color,rowIdx,false);
-      }
-    });
-  }
-
-  // BOUT FROID
+  // Bout Froid 1 - ordre fixe
   h+='<tr><td colspan="'+(5+slots+1)+'" style="background:'+BOUT_FROID_COLOR+';color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT FROID</td></tr>';
-  var bfRows=[];
-  TASKS_BOUT_FROID.forEach(function(task,idx){
-    var t=tasks[task.id]||{}, start=getTV(t.sh||"",t.sm||"");
-    bfRows.push({type:"fixed",task:task,t:t,idx:idx,sMin:toMin(start)});
-  });
-  extrasBoutFroid.forEach(function(et,idx){
-    var start=getTV(et.sh||"",et.sm||"");
-    bfRows.push({type:"extra",et:et,idx:idx,sMin:toMin(start)});
-  });
-  bfRows.sort(function(a,b){ if(a.sMin===null)return 1; if(b.sMin===null)return -1; return a.sMin-b.sMin; });
-  bfRows.forEach(function(rowData,rowIdx){
-    if(rowData.type==="fixed"){
-      var task=rowData.task, t=rowData.t, idx=rowData.idx;
-      var uid="task_bf_"+task.id;
-      var quiDisplay=ganttQuiOverrides[uid]||t.qui||task.qui;
-      renderTaskRow(task,t,idx,uid,task.color,quiDisplay,rowIdx,true);
-    } else {
-      var et=rowData.et, idx=rowData.idx;
-      var color=et.color||TASK_COLORS[idx%TASK_COLORS.length];
-      var uid="extra_bf_"+idx;
-      renderExtraRow(et,idx,uid,color,rowIdx,true);
-    }
-  });
+  TASKS_BOUT_FROID.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, true, idx, "bc1"); });
+  extrasBoutFroid.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx, "bc1"); });
+
+  // Bout Chaud 2 si actif
+  var hasBc2 = data.bc2Active || false;
+  var tasks2 = data.tasks2 || {};
+  var extras2 = (data.extraTasks2||[]).slice();
+  var extras2BoutChaud = extras2.filter(function(et){ return (et.group||"boutchaud")==="boutchaud"; });
+  var extras2BoutFroid = extras2.filter(function(et){ return et.group==="boutfroid"; });
+  var machine2Label = data.machine2 || "Machine 2";
+  if (hasBc2) {
+    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#c0392b;color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT CHAUD 2 — '+machine2Label+'</td></tr>';
+    TASKS_RONDELLE.forEach(function(task,idx){ renderTaskRow(task, tasks2[task.id]||{}, idx, false, idx, "bc2"); });
+    extras2BoutChaud.forEach(function(et,idx){ renderExtraRow(et, idx, false, TASKS_RONDELLE.length+idx, "bc2"); });
+    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:'+BOUT_FROID_COLOR+';color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT FROID (BC2)</td></tr>';
+    TASKS_BOUT_FROID.forEach(function(task,idx){ renderTaskRow(task, tasks2[task.id]||{}, idx, true, idx, "bc2"); });
+    extras2BoutFroid.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx, "bc2"); });
+  }
 
   h+='</table>';
   container.innerHTML=h;
@@ -1001,7 +971,6 @@ function renderGantt(date, machine, data) {
 }
 
 // ── TOOLTIP ───────────────────────────────────────────────────────────────────
-
 function showTT(e,label,qui,start,end,color,comment){
   var TT=document.getElementById("tooltip");
   document.getElementById("tt-dot").style.background=color||"#3b82f6";
@@ -1030,7 +999,6 @@ function showTT(e,label,qui,start,end,color,comment){
 function hideTT(){ document.getElementById("tooltip").classList.remove("visible"); }
 
 // ── SELECTION ─────────────────────────────────────────────────────────────────
-
 function toggleSelect(id){
   var idx=selectedIds.indexOf(id);
   if(idx>-1) selectedIds.splice(idx,1);
@@ -1076,7 +1044,6 @@ function doCompare(){
 function closeCompare(){ document.getElementById("cmp-result").classList.remove("visible"); }
 
 // ── JUSTIFICATION ─────────────────────────────────────────────────────────────
-
 function openJustifDialog(){
   if(selectedIds.length<1) return;
   var existing=document.getElementById("justif-dialog"); if(existing){existing.remove();return;}
@@ -1124,7 +1091,6 @@ function renderJustifications(){
 }
 
 // ── QUI EDITABLE ──────────────────────────────────────────────────────────────
-
 function showQuiEditor(cell,uid,current){
   var existing=document.getElementById("qui-editor"); if(existing) existing.remove();
   var editor=document.createElement("div"); editor.id="qui-editor"; editor.className="qui-editor";
@@ -1136,8 +1102,7 @@ function showQuiEditor(cell,uid,current){
   function applyEdit(){
     var val=input.value.trim(); if(!val){editor.remove();return;}
     ganttQuiOverrides[uid]=val; cell.textContent=val+" [mod]"; cell.dataset.uid=uid;
-    editor.remove();
-    showToast("Responsable mis a jour !","#1a3a6b");
+    editor.remove(); showToast("Responsable mis a jour !","#1a3a6b");
   }
   saveBtn.addEventListener("click",applyEdit);
   input.addEventListener("keydown",function(e){if(e.key==="Enter")applyEdit();if(e.key==="Escape")editor.remove();});
@@ -1145,7 +1110,6 @@ function showQuiEditor(cell,uid,current){
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
-
 function initExportButtons(){
   document.getElementById("export-toggle-btn").addEventListener("click",function(e){
     e.stopPropagation();
@@ -1179,26 +1143,79 @@ function exportToExcel(dateFrom,dateTo){
   var filtered=dateFrom&&dateTo?sessions.filter(function(s){return s.date>=dateFrom&&s.date<=dateTo;}):sessions;
   if(!filtered.length){alert("Aucune seance trouvee.");return;}
   filtered.sort(function(a,b){return new Date(a.date)-new Date(b.date);});
-  var rows=[["Date","Jour","Machine","Section","Tache","Qui","Debut","Fin","Duree (min)","Commentaire"]];
+  var rows=[["ID_Changement","Date","Heure_Debut","Heure_Fin","Jour","Ligne","Machine","Section","Tache","Qui","Debut","Fin","Debut_DT","Fin_DT","Duree_min","Commentaire"]];
+
+  function makeId(machine, dateStr, idx) {
+    return (machine||"").replace(/\s/g,"_")+"_"+dateStr+"_"+idx;
+  }
+
+  function makeDT(dateStr, timeStr) {
+    if (!dateStr || !timeStr || timeStr==="--") return "";
+    return dateStr+" "+timeStr+":00";
+  }
+
   filtered.forEach(function(session){
-    var dateStr=session.date||"",jourStr=dateStr?new Date(dateStr+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long"}):"",machine=session.machine||"";
-    var data=session.ganttData||{},targets=data.targets||{},tasks=data.tasks||{},extras=data.extraTasks||[];
+    var dateStr=session.date||"";
+    var jourStr=dateStr?new Date(dateStr+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long"}):"";
+    var machine=session.machine||"";
+    var data=session.ganttData||{},targets=data.targets||{},tasks=data.tasks||{};
+    var tasks2=data.tasks2||{}, extras=data.extraTasks||[], extras2=data.extraTasks2||[];
+    var hasBc2=data.bc2Active||false, machine2=data.machine2||machine;
+    var rowIdx=0;
+
+    function addRow(section, tache, qui, start, end, commentaire, machineLabel) {
+      var id = makeId(machineLabel||machine, dateStr, ++rowIdx);
+      var dur = toMin(start)!==null&&toMin(end)!==null ? toMin(end)-toMin(start) : "";
+      rows.push([
+        id, dateStr, start, end, jourStr,
+        machineLabel||machine, machineLabel||machine,
+        section, tache, qui, start, end,
+        makeDT(dateStr,start), makeDT(dateStr,end),
+        dur, (commentaire||"").replace(/
+/g," | ")
+      ]);
+    }
+
+    // Targets
     [["grand_t1","TARGET (Grand T1)"],["petit_t1","TARGET (Petit t1)"],["rondelle","TARGET (Rondelle)"]].forEach(function(td){
-      var t=targets[td[0]]||{},start=getTV(t.sh||"",t.sm||""),end=getTV(t.eh||"",t.em||"");
-      var dur=toMin(start)!==null&&toMin(end)!==null?toMin(end)-toMin(start):"";
-      rows.push([dateStr,jourStr,machine,td[1],"Target","--",start,end,dur,(t.comment||"").replace(/\n/g," | ")]);
+      var t=targets[td[0]]||{};
+      addRow(td[1],"Target","--",getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
     });
-    TASKS_BOUT_CHAUD.forEach(function(task){
-      var t=tasks[task.id]||{},start=getTV(t.sh||"",t.sm||""),end=getTV(t.eh||"",t.em||"");
-      var dur=toMin(start)!==null&&toMin(end)!==null?toMin(end)-toMin(start):"";
-      rows.push([dateStr,jourStr,machine,"Bout Chaud 1",task.machine,t.qui||task.qui,start,end,dur,(t.comment||"").replace(/\n/g," | ")]);
+
+    // Bout Chaud 1
+    TASKS_RONDELLE.forEach(function(task){
+      var t=tasks[task.id]||{};
+      addRow("Bout Chaud 1",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
     });
-    extras.forEach(function(et){
-      var start=getTV(et.sh||"",et.sm||""),end=getTV(et.eh||"",et.em||"");
-      var dur=toMin(start)!==null&&toMin(end)!==null?toMin(end)-toMin(start):"";
-      rows.push([dateStr,jourStr,machine,"Bout Chaud 1",et.machine||"Extra",et.qui||"",start,end,dur,(et.comment||"").replace(/\n/g," | ")]);
+    extras.filter(function(et){return (et.group||"boutchaud")==="boutchaud";}).forEach(function(et){
+      addRow("Bout Chaud 1",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine);
     });
-    rows.push(["","","","","","","","","",""]);
+
+    // Bout Froid 1
+    TASKS_BOUT_FROID.forEach(function(task){
+      var t=tasks[task.id]||{};
+      addRow("Bout Froid",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
+    });
+    extras.filter(function(et){return et.group==="boutfroid";}).forEach(function(et){
+      addRow("Bout Froid",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine);
+    });
+
+    // Bout Chaud 2
+    if (hasBc2) {
+      TASKS_RONDELLE.forEach(function(task){
+        var t=tasks2[task.id]||{};
+        addRow("Bout Chaud 2",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine2);
+      });
+      extras2.filter(function(et){return (et.group||"boutchaud")==="boutchaud";}).forEach(function(et){
+        addRow("Bout Chaud 2",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine2);
+      });
+      TASKS_BOUT_FROID.forEach(function(task){
+        var t=tasks2[task.id]||{};
+        addRow("Bout Froid BC2",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine2);
+      });
+    }
+
+    rows.push(Array(16).fill(""));
   });
   var csv=rows.map(function(row){return row.map(function(cell){var str=String(cell!==null&&cell!==undefined?cell:"").replace(/\n/g," | ").replace(/\r/g,""); return(str.indexOf(";")>-1||str.indexOf('"')>-1)?'"'+str.replace(/"/g,'""')+'"':str;}).join(";");}).join("\n");
   var blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
@@ -1208,7 +1225,6 @@ function exportToExcel(dateFrom,dateTo){
 }
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
-
 function showToast(message,color){
   var ex=document.getElementById("toast-notif"); if(ex) ex.remove();
   var toast=document.createElement("div"); toast.id="toast-notif"; toast.textContent=message;

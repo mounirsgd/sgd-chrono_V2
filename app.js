@@ -35,12 +35,14 @@ const TASKS_RONDELLE = [
 ];
 
 const TASKS_BOUT_FROID = [
-  {id:"bf_1", machine:"T0 : Duree nettoyage", qui:"Production", color:"#f1c40f", labelDebut:"Aligneur vide", labelFin:"Heur valid. vide de ligne"},
-  {id:"bf_2", machine:"T1 : Duree pre-reglage", qui:"Automation", color:"#64748b", labelDebut:"Debut reglage automation", labelFin:"Fin reglage de base machine"},
-  {id:"bf_3", machine:"T2 : Monte en regime", qui:"Automation", color:"#795548", labelDebut:"Top qualite", labelFin:"Val. 2 lots commercialisable"},
-  {id:"bf_4", machine:"T1\u2019 : Arrivee 2 section controlable", qui:"Automation", color:"#2e86ab", labelDebut:"Arrivee deux sections", labelFin:"Arrivee toutes sections"}
+  {id:"bf_1", machine:"T0 : Aligneur vide", qui:"Production", color:"#f1c40f", labelDebut:"Début", labelFin:"Fin"},
+  {id:"bf_5", machine:"T0’ : Nettoyage de ligne", qui:"Production", color:"#e67e22", labelDebut:"Début", labelFin:"Heur valid. vide de ligne"},
+  {id:"bf_2", machine:"T1 : Durée pré-réglage", qui:"Automation", color:"#64748b", labelDebut:"Début réglage automation", labelFin:"Fin réglage de base machines"},
+  {id:"bf_4", machine:"T1’ : Arrivée 2 sections contrôlables", qui:"Automation", color:"#2e86ab", labelDebut:"Arrivée deux sections", labelFin:"Arrivée de toutes sections"},
+  {id:"bf_3", machine:"T2 : Top qualités", qui:"Automation", color:"#795548", labelDebut:"Début", labelFin:"Fin"},
+  {id:"bf_6", machine:"T2’ : Premier lot sorti", qui:"Automation", color:"#9b59b6", labelDebut:"Début", labelFin:"Fin"},
+  {id:"bf_7", machine:"T2’’ : Montée en régime", qui:"Automation", color:"#1abc9c", labelDebut:"Début", labelFin:"Val. 2 lots commercialisables"}
 ];
-
 const BOUT_FROID_COLOR = "#2e86ab";
 const MAX_SLOTS = 4;
 const HISTORY_PAGE_SIZE = 5;
@@ -297,16 +299,6 @@ function buildBC2Form() {
     appendTaskRow(bc2Wrap, task.id, task.machine, task.qui, tv, TASK_COLORS[idx % TASK_COLORS.length]);
   });
 
-  var bfSep2 = document.createElement("div");
-  bfSep2.style.cssText = "background:"+BOUT_FROID_COLOR+";color:#fff;font-size:12px;font-weight:700;padding:8px 12px;letter-spacing:.5px;";
-  bfSep2.textContent = "BOUT FROID"; bc2Wrap.appendChild(bfSep2);
-
-  TASKS_BOUT_FROID.forEach(function(task) {
-    var tv = (ganttData.tasks2 && ganttData.tasks2[task.id+"_2"]) ? ganttData.tasks2[task.id+"_2"] : {};
-    tv._labelDebut = task.labelDebut; tv._labelFin = task.labelFin;
-    appendTaskRow(bc2Wrap, task.id+"_2", task.machine, task.qui, tv, task.color);
-  });
-
   (ganttData.extraTasks2 || []).forEach(function(et) {
     appendExtraTaskRow(bc2Wrap, et, et.color || TASK_COLORS[0], true);
   });
@@ -560,10 +552,7 @@ function collectData() {
       var f = bc2Sec._taskFields[task.id]; if (!f) return;
       out.tasks2[task.id] = readSlots(f.row);
     });
-    TASKS_BOUT_FROID.forEach(function(task) {
-      var f = bc2Sec._taskFields[task.id+"_2"]; if (!f) return;
-      out.tasks2[task.id+"_2"] = readSlots(f.row);
-    });
+
     bc2Sec._extraFields.forEach(function(et) {
       var name = et.row._nameInp ? et.row._nameInp.value.trim() : "";
       if (!name) return;
@@ -839,7 +828,6 @@ function renderGantt(date, machine, data) {
   var machine2Label = data.machine2 || "Machine 2";
   if (hasBc2) {
     TASKS_RONDELLE.forEach(function(t){ regObj(tasks2[t.id]||{}); });
-    TASKS_BOUT_FROID.forEach(function(t){ regObj(tasks2[t.id+"_2"]||{}); });
     extras2.forEach(function(et){ regObj(et); });
   }
 
@@ -969,28 +957,20 @@ function renderGantt(date, machine, data) {
   TASKS_RONDELLE.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, false, idx); });
   extrasBoutChaud.forEach(function(et,idx){ renderExtraRow(et, idx, false, TASKS_RONDELLE.length+idx); });
 
-  // Bout Froid BC1 - ordre fixe
-  h+='<tr><td colspan="'+(5+slots+1)+'" style="background:'+BOUT_FROID_COLOR+';color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT FROID</td></tr>';
-  TASKS_BOUT_FROID.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, true, idx); });
-  extrasBoutFroid.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx); });
-
-  // Bout Chaud 2 + Bout Froid BC2
+  // Bout Chaud 2 (avant Bout Froid)
   if (hasBc2) {
     var extras2BC = extras2.filter(function(et){ return (et.group||"boutchaud")==="boutchaud"; });
-    var extras2BF = extras2.filter(function(et){ return et.group==="boutfroid"; });
-
-    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#1a9ab5;color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT CHAUD 2 — '+machine2Label+'</td></tr>';
+    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#e74c3c;color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT CHAUD 2 — '+machine2Label+'</td></tr>';
     TASKS_RONDELLE.forEach(function(task,idx){
       renderTaskRow(task, tasks2[task.id]||{}, idx, false, idx, "bc2");
     });
     extras2BC.forEach(function(et,idx){ renderExtraRow(et, idx, false, TASKS_RONDELLE.length+idx, "bc2"); });
-
-    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:'+BOUT_FROID_COLOR+';color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT FROID — '+machine2Label+'</td></tr>';
-    TASKS_BOUT_FROID.forEach(function(task,idx){
-      renderTaskRow(task, tasks2[task.id+"_2"]||{}, idx, true, idx, "bc2");
-    });
-    extras2BF.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx, "bc2"); });
   }
+
+  // Bout Froid unique - ordre fixe
+  h+='<tr><td colspan="'+(5+slots+1)+'" style="background:'+BOUT_FROID_COLOR+';color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT FROID</td></tr>';
+  TASKS_BOUT_FROID.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, true, idx); });
+  extrasBoutFroid.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx); });
 
   h+='</table>';
   container.innerHTML=h;

@@ -13,7 +13,7 @@ const firebaseConfig = {
 };
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
-const db = getDatabase(firebaseApp);
+const db = getDatabase(firebaseApp); 
 
 const TASK_COLORS = [
   "#3b82f6","#8b5cf6","#06b6d4","#22c55e","#f97316",

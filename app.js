@@ -47,7 +47,7 @@ const HISTORY_PAGE_SIZE = 5;
 const ALL_TASK_IDS = TASKS_RONDELLE.map(function(t){return t.id;}).concat(TASKS_BOUT_FROID.map(function(t){return t.id;}));
 
 let allSessions = {};
-let ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, extraTasks:[] };
+let ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, extraTasks:[], tasks2:{}, extraTasks2:[], bc2Active:false, machine2:"" };
 let selectedIds = [];
 let allTasks = {};
 let historyPage = 0;
@@ -56,7 +56,7 @@ let justifications = [];
 let appReady = false;
 let currentSessId = null;
 let bc2Active = false;
-let machine2 = "";
+let machine2Name = "";
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 document.getElementById("login-btn").addEventListener("click", async function() {
@@ -150,10 +150,13 @@ function initApp() {
     var btn = document.getElementById("toggle-bc2-btn");
     var sec = document.getElementById("bc2-form-section");
     if (bc2Active) {
-      btn.textContent = "- BC2"; btn.style.background = "#c0392b";
+      btn.textContent = "✕ Désactiver Bout Chaud 2";
+      btn.style.background = "#e74c3c";
       sec.style.display = "block";
+      buildBC2Form();
     } else {
-      btn.textContent = "+ BC2"; btn.style.background = "#fa8072";
+      btn.textContent = "+ Bout Chaud 2";
+      btn.style.background = "#1a9ab5";
       sec.style.display = "none";
     }
   });
@@ -177,9 +180,15 @@ function initApp() {
 function resetState() {
   ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, extraTasks:[], tasks2:{}, extraTasks2:[], bc2Active:false, machine2:"" };
   selectedIds = []; ganttQuiOverrides = {}; justifications = [];
-  currentSessId = null;
+  currentSessId = null; bc2Active = false; machine2Name = "";
   document.getElementById("f-machine-name").value = "";
   document.getElementById("f-date").value = new Date().toISOString().slice(0,10);
+  var m2 = document.getElementById("f-machine2-name");
+  if (m2) m2.value = "";
+  var btn = document.getElementById("toggle-bc2-btn");
+  if (btn) { btn.textContent = "+ Bout Chaud 2"; btn.style.background = "#1a9ab5"; }
+  var sec = document.getElementById("bc2-form-section");
+  if (sec) sec.style.display = "none";
 }
 
 // ── FORMULAIRE ────────────────────────────────────────────────────────────────
@@ -249,69 +258,87 @@ function buildForm() {
   container.appendChild(tasksSec);
   container._tasksSec = tasksSec;
 
-  // Bout Chaud 2 - section separee avec titre machine
-  var bc2FormSec = document.getElementById("bc2-form-section");
-  if (bc2FormSec) {
-    bc2FormSec.innerHTML = "";
-    var bc2Inner = document.createElement("div");
-    bc2Inner.className = "tasks-sec"; bc2Inner.style.borderColor = "#c0392b";
-    var bc2Hd = document.createElement("div"); bc2Hd.className = "tasks-sec-hd"; bc2Hd.style.background = "#c0392b";
-    bc2Hd.textContent = "BOUT CHAUD 2";
-    bc2Inner.appendChild(bc2Hd);
-    // Champ titre machine BC2
-    var m2Row = document.createElement("div");
-    m2Row.style.cssText = "padding:8px 12px;display:flex;align-items:center;gap:8px;background:#fff3f3;border-bottom:1px solid #f0d0d0;";
-    var m2Lbl = document.createElement("label"); m2Lbl.textContent = "Machine :"; m2Lbl.style.cssText = "font-size:13px;font-weight:700;color:#c0392b;white-space:nowrap;";
-    var m2Inp = document.createElement("input"); m2Inp.type = "text"; m2Inp.id = "f-machine2-name";
-    m2Inp.value = ganttData.machine2 || "";
-    m2Inp.placeholder = "ex : Machine 232";
-    m2Inp.style.cssText = "flex:1;border:1px solid #e0e0e5;border-radius:8px;padding:6px 10px;font-size:13px;font-family:Arial,sans-serif;outline:none;";
-    m2Row.appendChild(m2Lbl); m2Row.appendChild(m2Inp);
-    bc2Inner.appendChild(m2Row);
-    bc2Inner._taskFields = {}; bc2Inner._extraFields = [];
-    TASKS_RONDELLE.forEach(function(task, idx) {
-      var tv = (ganttData.tasks2 && ganttData.tasks2[task.id]) ? ganttData.tasks2[task.id] : {};
-      appendTaskRow(bc2Inner, task.id, task.machine, task.qui, tv, TASK_COLORS[idx % TASK_COLORS.length]);
+  // Reconstruire BC2 si actif
+  if (bc2Active) buildBC2Form();
+}
+
+function buildBC2Form() {
+  var sec = document.getElementById("bc2-form-section");
+  if (!sec) return;
+  sec.innerHTML = "";
+
+  var bc2Wrap = document.createElement("div");
+  bc2Wrap.className = "tasks-sec"; bc2Wrap.style.borderColor = "#1a9ab5";
+
+  // En-tête
+  var hd = document.createElement("div"); hd.className = "tasks-sec-hd"; hd.style.background = "#1a9ab5";
+  hd.textContent = "Bout Chaud 2"; bc2Wrap.appendChild(hd);
+
+  // Champ titre machine BC2
+  var machineRow = document.createElement("div");
+  machineRow.style.cssText = "padding:8px 12px;display:flex;align-items:center;gap:8px;background:#f0faff;border-bottom:1px solid #c8e8f0;";
+  var machineLbl = document.createElement("label");
+  machineLbl.textContent = "Machine :";
+  machineLbl.style.cssText = "font-size:13px;font-weight:700;color:#1a9ab5;white-space:nowrap;";
+  var machineInp = document.createElement("input");
+  machineInp.type = "text"; machineInp.id = "f-machine2-name";
+  machineInp.value = ganttData.machine2 || machine2Name || "";
+  machineInp.placeholder = "ex : Machine 232";
+  machineInp.style.cssText = "flex:1;border:1.5px solid #1a9ab5;border-radius:8px;padding:6px 10px;font-size:13px;font-family:Arial,sans-serif;outline:none;";
+  machineInp.addEventListener("input", function() { machine2Name = this.value; });
+  machineRow.appendChild(machineLbl); machineRow.appendChild(machineInp);
+  bc2Wrap.appendChild(machineRow);
+
+  // Tâches BC2
+  bc2Wrap._taskFields = {}; bc2Wrap._extraFields = [];
+
+  TASKS_RONDELLE.forEach(function(task, idx) {
+    var tv = (ganttData.tasks2 && ganttData.tasks2[task.id]) ? ganttData.tasks2[task.id] : {};
+    appendTaskRow(bc2Wrap, task.id, task.machine, task.qui, tv, TASK_COLORS[idx % TASK_COLORS.length]);
+  });
+
+  var bfSep2 = document.createElement("div");
+  bfSep2.style.cssText = "background:"+BOUT_FROID_COLOR+";color:#fff;font-size:12px;font-weight:700;padding:8px 12px;letter-spacing:.5px;";
+  bfSep2.textContent = "BOUT FROID"; bc2Wrap.appendChild(bfSep2);
+
+  TASKS_BOUT_FROID.forEach(function(task) {
+    var tv = (ganttData.tasks2 && ganttData.tasks2[task.id+"_2"]) ? ganttData.tasks2[task.id+"_2"] : {};
+    tv._labelDebut = task.labelDebut; tv._labelFin = task.labelFin;
+    appendTaskRow(bc2Wrap, task.id+"_2", task.machine, task.qui, tv, task.color);
+  });
+
+  (ganttData.extraTasks2 || []).forEach(function(et) {
+    appendExtraTaskRow(bc2Wrap, et, et.color || TASK_COLORS[0], true);
+  });
+
+  var addBtn2 = document.createElement("button");
+  addBtn2.className = "btn-add-task"; addBtn2.textContent = "+ Ajouter une tâche";
+  addBtn2.addEventListener("click", function() {
+    var existing = document.getElementById("add-task-popup-2");
+    if (existing) { existing.remove(); return; }
+    var popup = document.createElement("div"); popup.id = "add-task-popup-2";
+    popup.style.cssText = "background:#fff;border:1.5px solid #1a9ab5;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:10px;margin:6px 0;display:flex;gap:10px;";
+    var btnBC = document.createElement("button"); btnBC.textContent = "Bout Chaud";
+    btnBC.style.cssText = "flex:1;padding:10px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;";
+    btnBC.addEventListener("click", function() {
+      var color = TASK_COLORS[(TASKS_RONDELLE.length + bc2Wrap._extraFields.length) % TASK_COLORS.length];
+      appendExtraTaskRow(bc2Wrap, {group:"boutchaud"}, color, true); popup.remove();
     });
-    var bfSep2 = document.createElement("div");
-    bfSep2.style.cssText = "background:"+BOUT_FROID_COLOR+";color:#fff;font-size:12px;font-weight:700;padding:8px 12px;letter-spacing:.5px;";
-    bfSep2.textContent = "BOUT FROID"; bc2Inner.appendChild(bfSep2);
-    TASKS_BOUT_FROID.forEach(function(task) {
-      var tv = (ganttData.tasks2 && ganttData.tasks2[task.id]) ? ganttData.tasks2[task.id] : {};
-      tv._labelDebut = task.labelDebut; tv._labelFin = task.labelFin;
-      appendTaskRow(bc2Inner, task.id+"_2", task.machine, task.qui, tv, task.color);
+    var btnBF = document.createElement("button"); btnBF.textContent = "Bout Froid";
+    btnBF.style.cssText = "flex:1;padding:10px;background:"+BOUT_FROID_COLOR+";color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;";
+    btnBF.addEventListener("click", function() {
+      var bfColors = ["#f1c40f","#64748b","#795548","#2e86ab"];
+      var idx2 = bc2Wrap._extraFields.filter(function(f){return f.group==="boutfroid";}).length;
+      appendExtraTaskRow(bc2Wrap, {group:"boutfroid"}, bfColors[idx2%4], true); popup.remove();
     });
-    (ganttData.extraTasks2 || []).forEach(function(et) {
-      appendExtraTaskRow(bc2Inner, et, et.color || TASK_COLORS[0], true);
-    });
-    var addBtn2 = document.createElement("button");
-    addBtn2.className = "btn-add-task"; addBtn2.textContent = "+ Ajouter une tache";
-    addBtn2.addEventListener("click", function() {
-      var existing = document.getElementById("add-task-popup-2");
-      if (existing) { existing.remove(); return; }
-      var popup = document.createElement("div"); popup.id = "add-task-popup-2";
-      popup.style.cssText = "background:#fff;border:1.5px solid #c0392b;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:10px;margin:6px 0;display:flex;gap:10px;";
-      var btnBC = document.createElement("button"); btnBC.textContent = "Bout Chaud";
-      btnBC.style.cssText = "flex:1;padding:10px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;";
-      btnBC.addEventListener("click", function() {
-        var color = TASK_COLORS[(TASKS_RONDELLE.length + bc2Inner._extraFields.length) % TASK_COLORS.length];
-        appendExtraTaskRow(bc2Inner, {group:"boutchaud"}, color, true); popup.remove();
-      });
-      var btnBF = document.createElement("button"); btnBF.textContent = "Bout Froid";
-      btnBF.style.cssText = "flex:1;padding:10px;background:"+BOUT_FROID_COLOR+";color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;";
-      btnBF.addEventListener("click", function() {
-        var bfColors = ["#f1c40f","#64748b","#795548","#2e86ab"];
-        var idx = bc2Inner._extraFields.filter(function(f){return f.group==="boutfroid";}).length;
-        appendExtraTaskRow(bc2Inner, {group:"boutfroid"}, bfColors[idx%4], true); popup.remove();
-      });
-      popup.appendChild(btnBC); popup.appendChild(btnBF);
-      bc2Inner.insertBefore(popup, addBtn2);
-    });
-    bc2Inner.appendChild(addBtn2);
-    bc2FormSec.appendChild(bc2Inner);
-    container._bc2Sec = bc2Inner;
-    bc2FormSec.style.display = bc2Active ? "block" : "none";
-  }
+    popup.appendChild(btnBC); popup.appendChild(btnBF);
+    bc2Wrap.insertBefore(popup, addBtn2);
+  });
+  bc2Wrap.appendChild(addBtn2);
+  sec.appendChild(bc2Wrap);
+
+  var container = document.getElementById("form-sections");
+  if (container) container._bc2Sec = bc2Wrap;
 }
 
 function buildTargetSection(key, label, color, saved) {
@@ -497,15 +524,11 @@ function encCmt(str) { if(!str) return ""; return str.replace(/\\/g,"\\\\").repl
 // ── COLLECTE ──────────────────────────────────────────────────────────────────
 function collectData() {
   var container = document.getElementById("form-sections");
-  var out = { targets:{}, tasks:{}, extraTasks:[], tasks2:{}, extraTasks2:[], bc2Active:bc2Active, machine2:"" };
-  var m2inp = document.getElementById("f-machine2-name");
-  if (m2inp) out.machine2 = m2inp.value.trim();
-
+  var out = { targets:{}, tasks:{}, extraTasks:[], tasks2:{}, extraTasks2:[], bc2Active:false, machine2:"" };
   ["grand_t1","petit_t1","rondelle"].forEach(function(key) {
     var sec = container.querySelector('[data-target-key="'+key+'"]');
     if (sec) out.targets[key] = readSlots(sec);
   });
-
   var tasksSec = container._tasksSec;
   if (tasksSec) {
     TASKS_RONDELLE.forEach(function(task) {
@@ -519,29 +542,33 @@ function collectData() {
     tasksSec._extraFields.forEach(function(et) {
       var name = et.row._nameInp ? et.row._nameInp.value.trim() : "";
       if (!name) return;
-      var d = readSlots(et.row); d.machine = name;
-      d.qui = et.row._whoInp ? et.row._whoInp.value.trim() : "";
+      var d = readSlots(et.row);
+      d.machine = name; d.qui = et.row._whoInp ? et.row._whoInp.value.trim() : "";
       d.group = et.group || "boutchaud"; d.color = et.color || "";
       out.extraTasks.push(d);
     });
   }
 
-  // Bout Chaud 2
-  if (bc2Active && container._bc2Sec) {
-    var bc2Sec = container._bc2Sec;
+  // Collecter BC2 si actif
+  out.bc2Active = bc2Active;
+  var m2inp = document.getElementById("f-machine2-name");
+  out.machine2 = m2inp ? m2inp.value.trim() : "";
+  var container2 = document.getElementById("form-sections");
+  var bc2Sec = container2 ? container2._bc2Sec : null;
+  if (bc2Active && bc2Sec) {
     TASKS_RONDELLE.forEach(function(task) {
       var f = bc2Sec._taskFields[task.id]; if (!f) return;
       out.tasks2[task.id] = readSlots(f.row);
     });
     TASKS_BOUT_FROID.forEach(function(task) {
       var f = bc2Sec._taskFields[task.id+"_2"]; if (!f) return;
-      out.tasks2[task.id] = readSlots(f.row);
+      out.tasks2[task.id+"_2"] = readSlots(f.row);
     });
     bc2Sec._extraFields.forEach(function(et) {
       var name = et.row._nameInp ? et.row._nameInp.value.trim() : "";
       if (!name) return;
-      var d = readSlots(et.row); d.machine = name;
-      d.qui = et.row._whoInp ? et.row._whoInp.value.trim() : "";
+      var d = readSlots(et.row);
+      d.machine = name; d.qui = et.row._whoInp ? et.row._whoInp.value.trim() : "";
       d.group = et.group || "boutchaud"; d.color = et.color || "";
       out.extraTasks2.push(d);
     });
@@ -586,24 +613,29 @@ async function saveSession() {
   }
 
   // Sauvegarder uniquement les taches remplies sur ce PC
+  // Les taches vides ne sont JAMAIS ecrasees dans Firebase
+  // => 2 PC peuvent remplir des sections differentes sans conflit
   for (var taskId of ALL_TASK_IDS) {
     var t = data.tasks[taskId] || {};
     var hasData = t.sh || t.eh || t.comment || t.sh2 || t.eh2 || t.sh3 || t.eh3 || t.sh4 || t.eh4;
     if (hasData) {
       await set(ref(db,"sessions/"+sessId+"/ganttData/tasks/"+taskId), t);
     }
+    // Si vide -> ne pas toucher Firebase -> preserve les donnees de l autre PC
   }
 
-  // Sauvegarder les extras BC1
+  // Sauvegarder les extras seulement si ce PC en a
   if (data.extraTasks && data.extraTasks.length > 0) {
     await set(ref(db,"sessions/"+sessId+"/ganttData/extraTasks"), data.extraTasks);
   }
 
-  // Sauvegarder BC2 si actif
+  // Sauvegarder BC2
   await set(ref(db,"sessions/"+sessId+"/ganttData/bc2Active"), bc2Active);
   await set(ref(db,"sessions/"+sessId+"/ganttData/machine2"), data.machine2||"");
   if (bc2Active) {
-    for (var taskId2 of ALL_TASK_IDS) {
+    var allTaskIds2 = TASKS_RONDELLE.map(function(t){return t.id;})
+      .concat(TASKS_BOUT_FROID.map(function(t){return t.id+"_2";}));
+    for (var taskId2 of allTaskIds2) {
       var t2 = data.tasks2[taskId2] || {};
       var hasData2 = t2.sh || t2.eh || t2.comment || t2.sh2 || t2.eh2;
       if (hasData2) {
@@ -639,9 +671,11 @@ async function autoSaveExtras(isBC2) {
   if (isBC2) {
     await set(ref(db,"sessions/"+currentSessId+"/ganttData/extraTasks2"), data.extraTasks2||[]);
   } else {
-    await set(ref(db,"sessions/"+currentSessId+"/ganttData/extraTasks"), data.extraTasks||[]);
+    if (data.extraTasks && data.extraTasks.length >= 0) {
+      await set(ref(db,"sessions/"+currentSessId+"/ganttData/extraTasks"), data.extraTasks);
+    }
   }
-  showToast("Tache supprimee !", "#e74c3c");
+  showToast("Tâche supprimée !", "#e74c3c");
 }
 
 async function newSession() {
@@ -713,15 +747,9 @@ async function loadHistorySession(id) {
   ganttData.tasks2 = ganttData.tasks2 || {};
   ganttData.extraTasks2 = ganttData.extraTasks2 || [];
   bc2Active = ganttData.bc2Active || false;
-  machine2 = ganttData.machine2 || "";
+  machine2Name = ganttData.machine2 || "";
+  updateBC2Button();
   currentSessId = id;
-  // Mettre a jour le bouton toggle
-  var btn = document.getElementById("toggle-bc2-btn");
-  var sec = document.getElementById("bc2-form-section");
-  if (btn && sec) {
-    if (bc2Active) { btn.textContent = "- BC2"; btn.style.background = "#c0392b"; sec.style.display = "block"; }
-    else { btn.textContent = "+ BC2"; btn.style.background = "#fa8072"; sec.style.display = "none"; }
-  }
   buildForm();
   renderGantt(d.date, d.machine, ganttData);
   setTimeout(function() { document.getElementById("gantt-section").scrollIntoView({behavior:"smooth"}); }, 200);
@@ -739,17 +767,27 @@ async function editHistorySession(id) {
   ganttData.tasks2 = ganttData.tasks2 || {};
   ganttData.extraTasks2 = ganttData.extraTasks2 || [];
   bc2Active = ganttData.bc2Active || false;
-  machine2 = ganttData.machine2 || "";
-  var btn2 = document.getElementById("toggle-bc2-btn");
-  var sec2 = document.getElementById("bc2-form-section");
-  if (btn2 && sec2) {
-    if (bc2Active) { btn2.textContent = "- BC2"; btn2.style.background = "#c0392b"; sec2.style.display = "block"; }
-    else { btn2.textContent = "+ BC2"; btn2.style.background = "#fa8072"; sec2.style.display = "none"; }
-  }
+  machine2Name = ganttData.machine2 || "";
+  updateBC2Button();
   currentSessId = id;
   buildForm();
   document.querySelector(".info-sec").scrollIntoView({behavior:"smooth"});
-  showToast("Seance chargee - modifiez puis enregistrez", "#1a3a6b");
+  showToast("Séance chargée - modifiez puis enregistrez", "#1a3a6b");
+}
+
+function updateBC2Button() {
+  var btn = document.getElementById("toggle-bc2-btn");
+  var sec = document.getElementById("bc2-form-section");
+  if (!btn || !sec) return;
+  if (bc2Active) {
+    btn.textContent = "✕ Désactiver Bout Chaud 2";
+    btn.style.background = "#e74c3c";
+    sec.style.display = "block";
+  } else {
+    btn.textContent = "+ Bout Chaud 2";
+    btn.style.background = "#1a9ab5";
+    sec.style.display = "none";
+  }
 }
 
 async function deleteSession(id) { if (!confirm("Supprimer cette seance ?")) return; await remove(ref(db,"sessions/"+id)); if (currentSessId === id) { resetState(); buildForm(); } }
@@ -794,12 +832,15 @@ function renderGantt(date, machine, data) {
   TASKS_RONDELLE.forEach(function(t){ regObj(tasks[t.id]||{}); });
   TASKS_BOUT_FROID.forEach(function(t){ regObj(tasks[t.id]||{}); });
   extras.forEach(function(et){ regObj(et); });
-  var tasks2_rg = data.tasks2 || {};
-  var extras2_rg = data.extraTasks2 || [];
-  if (data.bc2Active) {
-    TASKS_RONDELLE.forEach(function(t){ regObj(tasks2_rg[t.id]||{}); });
-    TASKS_BOUT_FROID.forEach(function(t){ regObj(tasks2_rg[t.id]||{}); });
-    extras2_rg.forEach(function(et){ regObj(et); });
+  // BC2
+  var hasBc2 = data.bc2Active || false;
+  var tasks2 = data.tasks2 || {};
+  var extras2 = (data.extraTasks2||[]).slice();
+  var machine2Label = data.machine2 || "Machine 2";
+  if (hasBc2) {
+    TASKS_RONDELLE.forEach(function(t){ regObj(tasks2[t.id]||{}); });
+    TASKS_BOUT_FROID.forEach(function(t){ regObj(tasks2[t.id+"_2"]||{}); });
+    extras2.forEach(function(et){ regObj(et); });
   }
 
   if (!isFinite(minT)) minT=360; if (!isFinite(maxT)) maxT=minT+120;
@@ -924,30 +965,31 @@ function renderGantt(date, machine, data) {
       '</tr>';
   }
 
-  // Bout Chaud 1 - ordre fixe
-  h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#1a3a6b;color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT CHAUD 1</td></tr>';
-  TASKS_RONDELLE.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, false, idx, "bc1"); });
-  extrasBoutChaud.forEach(function(et,idx){ renderExtraRow(et, idx, false, TASKS_RONDELLE.length+idx, "bc1"); });
+  // Bout Chaud - ordre fixe
+  TASKS_RONDELLE.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, false, idx); });
+  extrasBoutChaud.forEach(function(et,idx){ renderExtraRow(et, idx, false, TASKS_RONDELLE.length+idx); });
 
-  // Bout Froid 1 - ordre fixe
+  // Bout Froid BC1 - ordre fixe
   h+='<tr><td colspan="'+(5+slots+1)+'" style="background:'+BOUT_FROID_COLOR+';color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT FROID</td></tr>';
-  TASKS_BOUT_FROID.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, true, idx, "bc1"); });
-  extrasBoutFroid.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx, "bc1"); });
+  TASKS_BOUT_FROID.forEach(function(task,idx){ renderTaskRow(task, tasks[task.id]||{}, idx, true, idx); });
+  extrasBoutFroid.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx); });
 
-  // Bout Chaud 2 si actif
-  var hasBc2 = data.bc2Active || false;
-  var tasks2 = data.tasks2 || {};
-  var extras2 = (data.extraTasks2||[]).slice();
-  var extras2BoutChaud = extras2.filter(function(et){ return (et.group||"boutchaud")==="boutchaud"; });
-  var extras2BoutFroid = extras2.filter(function(et){ return et.group==="boutfroid"; });
-  var machine2Label = data.machine2 || "Machine 2";
+  // Bout Chaud 2 + Bout Froid BC2
   if (hasBc2) {
-    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#c0392b;color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT CHAUD 2 — '+machine2Label+'</td></tr>';
-    TASKS_RONDELLE.forEach(function(task,idx){ renderTaskRow(task, tasks2[task.id]||{}, idx, false, idx, "bc2"); });
-    extras2BoutChaud.forEach(function(et,idx){ renderExtraRow(et, idx, false, TASKS_RONDELLE.length+idx, "bc2"); });
-    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:'+BOUT_FROID_COLOR+';color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT FROID (BC2)</td></tr>';
-    TASKS_BOUT_FROID.forEach(function(task,idx){ renderTaskRow(task, tasks2[task.id]||{}, idx, true, idx, "bc2"); });
-    extras2BoutFroid.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx, "bc2"); });
+    var extras2BC = extras2.filter(function(et){ return (et.group||"boutchaud")==="boutchaud"; });
+    var extras2BF = extras2.filter(function(et){ return et.group==="boutfroid"; });
+
+    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:#1a9ab5;color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT CHAUD 2 — '+machine2Label+'</td></tr>';
+    TASKS_RONDELLE.forEach(function(task,idx){
+      renderTaskRow(task, tasks2[task.id]||{}, idx, false, idx, "bc2");
+    });
+    extras2BC.forEach(function(et,idx){ renderExtraRow(et, idx, false, TASKS_RONDELLE.length+idx, "bc2"); });
+
+    h+='<tr><td colspan="'+(5+slots+1)+'" style="background:'+BOUT_FROID_COLOR+';color:#fff;font-weight:700;font-size:12px;padding:7px 12px;">BOUT FROID — '+machine2Label+'</td></tr>';
+    TASKS_BOUT_FROID.forEach(function(task,idx){
+      renderTaskRow(task, tasks2[task.id+"_2"]||{}, idx, true, idx, "bc2");
+    });
+    extras2BF.forEach(function(et,idx){ renderExtraRow(et, idx, true, TASKS_BOUT_FROID.length+idx, "bc2"); });
   }
 
   h+='</table>';
@@ -1143,79 +1185,64 @@ function exportToExcel(dateFrom,dateTo){
   var filtered=dateFrom&&dateTo?sessions.filter(function(s){return s.date>=dateFrom&&s.date<=dateTo;}):sessions;
   if(!filtered.length){alert("Aucune seance trouvee.");return;}
   filtered.sort(function(a,b){return new Date(a.date)-new Date(b.date);});
-  var rows=[["ID_Changement","Date","Heure_Debut","Heure_Fin","Jour","Ligne","Machine","Section","Tache","Qui","Debut","Fin","Debut_DT","Fin_DT","Duree_min","Commentaire"]];
-
-  function makeId(machine, dateStr, idx) {
-    return (machine||"").replace(/\s/g,"_")+"_"+dateStr+"_"+idx;
-  }
-
-  function makeDT(dateStr, timeStr) {
-    if (!dateStr || !timeStr || timeStr==="--") return "";
-    return dateStr+" "+timeStr+":00";
-  }
-
+  var rows=[["ID_Changement","Date","Date_Heure_Debut","Date_Heure_Fin","Jour","Machine","Section","Tâche","Qui","Début","Fin","Durée (min)","Commentaire"]];
   filtered.forEach(function(session){
-    var dateStr=session.date||"";
-    var jourStr=dateStr?new Date(dateStr+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long"}):"";
-    var machine=session.machine||"";
+    var dateStr=session.date||"",jourStr=dateStr?new Date(dateStr+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long"}):"",machine=session.machine||"";
     var data=session.ganttData||{},targets=data.targets||{},tasks=data.tasks||{};
-    var tasks2=data.tasks2||{}, extras=data.extraTasks||[], extras2=data.extraTasks2||[];
-    var hasBc2=data.bc2Active||false, machine2=data.machine2||machine;
-    var rowIdx=0;
+    var extras=data.extraTasks||[], tasks2=data.tasks2||{}, extras2=data.extraTasks2||[];
+    var hasBc2Export=data.bc2Active||false, machine2Export=data.machine2||machine;
+    var rowIdx = 0;
 
-    function addRow(section, tache, qui, start, end, commentaire, machineLabel) {
-      var id = makeId(machineLabel||machine, dateStr, ++rowIdx);
+    function makeId(mach, date, idx) {
+      return mach.replace(/\s/g,"_")+"_"+date+"_"+String(idx).padStart(3,"0");
+    }
+    function makeDT(dateS, timeS) {
+      if (!dateS || !timeS || timeS === "--") return "";
+      return dateS + " " + timeS + ":00";
+    }
+    function addExportRow(section, tache, qui, start, end, commentaire, mach) {
+      rowIdx++;
       var dur = toMin(start)!==null&&toMin(end)!==null ? toMin(end)-toMin(start) : "";
       rows.push([
-        id, dateStr, start, end, jourStr,
-        machineLabel||machine, machineLabel||machine,
-        section, tache, qui, start, end,
-        makeDT(dateStr,start), makeDT(dateStr,end),
-        dur, (commentaire||"").replace(/
-/g," | ")
+        makeId(mach||machine, dateStr, rowIdx),
+        dateStr, makeDT(dateStr,start), makeDT(dateStr,end),
+        jourStr, mach||machine, section, tache, qui, start, end, dur,
+        (commentaire||"").replace(/\n/g," | ")
       ]);
     }
 
-    // Targets
     [["grand_t1","TARGET (Grand T1)"],["petit_t1","TARGET (Petit t1)"],["rondelle","TARGET (Rondelle)"]].forEach(function(td){
       var t=targets[td[0]]||{};
-      addRow(td[1],"Target","--",getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
+      addExportRow(td[1],"Target","--",getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
     });
-
-    // Bout Chaud 1
     TASKS_RONDELLE.forEach(function(task){
       var t=tasks[task.id]||{};
-      addRow("Bout Chaud 1",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
+      addExportRow("Bout Chaud 1",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
     });
     extras.filter(function(et){return (et.group||"boutchaud")==="boutchaud";}).forEach(function(et){
-      addRow("Bout Chaud 1",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine);
+      addExportRow("Bout Chaud 1",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine);
     });
-
-    // Bout Froid 1
     TASKS_BOUT_FROID.forEach(function(task){
       var t=tasks[task.id]||{};
-      addRow("Bout Froid",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
+      addExportRow("Bout Froid",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
     });
     extras.filter(function(et){return et.group==="boutfroid";}).forEach(function(et){
-      addRow("Bout Froid",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine);
+      addExportRow("Bout Froid",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine);
     });
-
-    // Bout Chaud 2
-    if (hasBc2) {
+    if (hasBc2Export) {
       TASKS_RONDELLE.forEach(function(task){
         var t=tasks2[task.id]||{};
-        addRow("Bout Chaud 2",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine2);
+        addExportRow("Bout Chaud 2",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine2Export);
       });
       extras2.filter(function(et){return (et.group||"boutchaud")==="boutchaud";}).forEach(function(et){
-        addRow("Bout Chaud 2",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine2);
+        addExportRow("Bout Chaud 2",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine2Export);
       });
       TASKS_BOUT_FROID.forEach(function(task){
-        var t=tasks2[task.id]||{};
-        addRow("Bout Froid BC2",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine2);
+        var t=tasks2[task.id+"_2"]||{};
+        addExportRow("Bout Froid BC2",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine2Export);
       });
     }
-
-    rows.push(Array(16).fill(""));
+    rows.push(Array(13).fill(""));
   });
   var csv=rows.map(function(row){return row.map(function(cell){var str=String(cell!==null&&cell!==undefined?cell:"").replace(/\n/g," | ").replace(/\r/g,""); return(str.indexOf(";")>-1||str.indexOf('"')>-1)?'"'+str.replace(/"/g,'""')+'"':str;}).join(";");}).join("\n");
   var blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});

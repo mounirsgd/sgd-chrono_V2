@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SGD Chrono V2 - Changement Temp/Machine</title>
-  <link rel="stylesheet" href="style.css?v=2.0">
+  <link rel="stylesheet" href="style.css?v=2.1">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -13,13 +13,13 @@
 <div id="tooltip">
   <div class="tt-header"><span id="tt-dot" class="tt-dot"></span><span id="tt-title" class="tt-title"></span></div>
   <div class="tt-row"><span class="tt-label">Qui</span><span id="tt-qui" class="tt-val"></span></div>
-  <div class="tt-row"><span class="tt-label">Debut</span><span id="tt-start" class="tt-val"></span></div>
+  <div class="tt-row"><span class="tt-label">Début</span><span id="tt-start" class="tt-val"></span></div>
   <div class="tt-row"><span class="tt-label">Fin</span><span id="tt-end" class="tt-val"></span></div>
   <div id="tt-dur" class="tt-dur"></div>
   <div id="tt-comment-box" class="tt-comment-box" style="display:none"><span id="tt-comment"></span></div>
 </div>
 
-<!-- ECRAN DE CONNEXION -->
+<!-- ÉCRAN DE CONNEXION -->
 <div id="login-screen" style="display:flex">
   <div class="login-card">
     <div class="login-logo v2">
@@ -27,7 +27,7 @@
       <span class="login-logo-sub">Chrono</span>
     </div>
     <h1 class="login-title">Suivi des changements<br><span class="login-title-sub">Temp / Machine — V2</span></h1>
-    <p class="login-subtitle">SUCY-EN-BRIE · ACCES SECURISE</p>
+    <p class="login-subtitle">SUCY-EN-BRIE · ACCÈS SÉCURISÉ</p>
     <div class="login-field">
       <label class="login-label">IDENTIFIANT</label>
       <input id="login-email" type="email" class="login-input" placeholder="admin.sgd@gmail.com" autocomplete="username">
@@ -68,23 +68,23 @@
         Historique <span id="history-count" style="font-weight:400;font-size:10px"></span>
         <span class="history-del-all" id="del-all-btn">Tout supprimer</span>
       </div>
-      <div class="history-list" id="history-list"><div class="history-empty">Aucune seance enregistree</div></div>
+      <div class="history-list" id="history-list"><div class="history-empty">Aucune séance enregistrée</div></div>
     </div>
 
     <!-- INFORMATIONS -->
     <div class="info-sec">
-      <div class="info-sec-hd">Informations de la seance</div>
+      <div class="info-sec-hd">Informations de la séance</div>
       <div class="info-row"><label>Date</label><input id="f-date" type="date"></div>
-      <div class="info-row"><label>Numero de ligne</label><input id="f-machine-name" placeholder="ex : Ligne 5" autocomplete="off"></div>
+      <div class="info-row"><label>Numéro de ligne</label><input id="f-machine-name" placeholder="ex : Ligne 5" autocomplete="off"></div>
       <div class="info-row export-row">
-        <span class="export-label">Exporter les donnees</span>
+        <span class="export-label">Exporter les données</span>
         <div class="export-right">
           <div class="export-dropdown" id="export-dropdown">
             <button class="export-btn" id="export-toggle-btn">&#x1F4CA; Exporter Excel &#x25BE;</button>
             <div class="export-menu" id="export-menu" style="display:none">
               <div class="export-menu-item" id="export-all">Tout exporter</div>
               <div class="export-menu-item" id="export-month">Ce mois-ci</div>
-              <div class="export-menu-item" id="export-custom">Choisir une periode</div>
+              <div class="export-menu-item" id="export-custom">Choisir une période</div>
               <div class="export-date-range" id="export-date-range" style="display:none">
                 <input type="date" id="export-date-from">
                 <span>au</span>
@@ -97,23 +97,24 @@
       </div>
     </div>
 
-        <!-- TOGGLE BOUT CHAUD 2 -->
+    <!-- FORMULAIRE Bout Chaud 1 -->
+    <div id="form-sections"></div>
+
+    <!-- TOGGLE BOUT CHAUD 2 + SECTION BC2 (entre BC1 et Bout Froid) -->
     <div style="display:flex;justify-content:flex-end;margin:8px 0 4px;">
-      <button id="toggle-bc2-btn" style="background:#1a9ab5;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;letter-spacing:.3px;">
+      <button id="toggle-bc2-btn" style="background:#fa8072;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;letter-spacing:.3px;">
         + Bout Chaud 2
       </button>
     </div>
-
-    <!-- FORMULAIRE (Bout Chaud 1 + Bout Froid) -->
-    <div id="form-sections"></div>
-
-    <!-- BOUT CHAUD 2 (masque par defaut - s insere entre BC1 et BF) -->
     <div id="bc2-form-section" style="display:none;"></div>
+
+    <!-- FORMULAIRE Bout Froid -->
+    <div id="bf-form-section"></div>
 
     <!-- BOUTONS -->
     <div class="btns">
       <button class="btn btn-ok" id="save-btn">&#x2713; Enregistrer et afficher le Gantt</button>
-      <button class="btn btn-full" id="new-session-btn">Nouvelle seance (repartir a zero)</button>
+      <button class="btn btn-full" id="new-session-btn">Nouvelle séance (repartir à zéro)</button>
     </div>
 
   </div>
@@ -151,6 +152,6 @@
 
 </div>
 
-<script type="module" src="app.js?v=2.0"></script>
+<script type="module" src="app.js?v=2.1"></script>
 </body>
 </html>

@@ -137,7 +137,7 @@ function initApp() {
   onValue(ref(db, "sessions"), function(snap) {
     allSessions = snap.val() || {};
     renderHistory(allSessions);
-    document.getElementById("sync-status").textContent = "Connecte";
+    document.getElementById("sync-status").textContent = "Connecté";
     // Mettre a jour le Gantt si une session est en cours d affichage
     var gs = document.getElementById("gantt-section");
     if (gs && gs.style.display !== "none" && currentSessId && allSessions[currentSessId]) {
@@ -188,10 +188,11 @@ function resetState() {
   var m2 = document.getElementById("f-machine2-name");
   if (m2) m2.value = "";
   var btn = document.getElementById("toggle-bc2-btn");
-  if (btn) { btn.textContent = "+ Bout Chaud 2"; btn.style.background = "#1a9ab5"; }
+  if (btn) { btn.textContent = "+ Bout Chaud 2"; btn.style.background = "#fa8072"; }
   var sec = document.getElementById("bc2-form-section");
-  if (sec) sec.style.display = "none";
-}
+  if (sec) { sec.style.display = "none"; sec.innerHTML = ""; }
+  var bfSec2 = document.getElementById("bf-form-section");
+  if (bfSec2) bfSec2.innerHTML = "";
 
 // ── FORMULAIRE ────────────────────────────────────────────────────────────────
 function buildForm() {
@@ -208,7 +209,7 @@ function buildForm() {
   var tasksSec = document.createElement("div");
   tasksSec.className = "tasks-sec"; tasksSec.style.borderColor = "#1a3a6b";
   var tasksHd = document.createElement("div"); tasksHd.className = "tasks-sec-hd"; tasksHd.style.background = "#1a3a6b";
-  tasksHd.textContent = "Taches detaillees"; tasksSec.appendChild(tasksHd);
+  tasksHd.textContent = "Tâches détaillées"; tasksSec.appendChild(tasksHd);
   tasksSec._taskFields = {}; tasksSec._extraFields = [];
 
   TASKS_RONDELLE.forEach(function(task, idx) {
@@ -246,14 +247,22 @@ function buildForm() {
   container.appendChild(tasksSec);
   container._tasksSec = tasksSec;
 
-  // BC2 s'insere ici si actif (dans le HTML bc2-form-section est juste apres)
+  // BC2 si actif
   if (bc2Active) {
     var bc2div = document.getElementById("bc2-form-section");
     if (bc2div) bc2div.style.display = "block";
     buildBC2Form();
   }
 
-  // Bout Froid - section separee apres BC2
+  // Bout Froid dans son propre conteneur HTML
+  buildBFForm();
+}
+
+function buildBFForm() {
+  var bfContainer = document.getElementById("bf-form-section");
+  if (!bfContainer) return;
+  bfContainer.innerHTML = "";
+
   var bfSec = document.createElement("div");
   bfSec.className = "tasks-sec"; bfSec.style.borderColor = BOUT_FROID_COLOR;
   var bfHd = document.createElement("div"); bfHd.className = "tasks-sec-hd"; bfHd.style.background = BOUT_FROID_COLOR;
@@ -274,12 +283,13 @@ function buildForm() {
   addBtnBF.className = "btn-add-task"; addBtnBF.textContent = "+ Ajouter une tâche Bout Froid";
   addBtnBF.addEventListener("click", function() {
     var bfColors = ["#f1c40f","#64748b","#795548","#2e86ab","#9b59b6","#1abc9c","#e67e22"];
-    var idx2 = bfSec._extraFields.length;
-    appendExtraTaskRow(bfSec, {group:"boutfroid"}, bfColors[idx2%7]);
+    appendExtraTaskRow(bfSec, {group:"boutfroid"}, bfColors[bfSec._extraFields.length%7]);
   });
   bfSec.appendChild(addBtnBF);
-  container.appendChild(bfSec);
-  container._bfSec = bfSec;
+  bfContainer.appendChild(bfSec);
+
+  var mainContainer = document.getElementById("form-sections");
+  if (mainContainer) mainContainer._bfSec = bfSec;
 }
 
 function buildBC2Form() {
@@ -383,7 +393,7 @@ function appendExtraTaskRow(sec, et, color, isBC2) {
   var top = document.createElement("div"); top.className = "task-row-top";
   var colorBar = document.createElement("div"); colorBar.className = "task-color-bar"; colorBar.style.background = color;
   var nameInp = document.createElement("input"); nameInp.type = "text"; nameInp.value = et.machine||"";
-  nameInp.placeholder = "Nom de la tache";
+  nameInp.placeholder = "Nom de la tâche";
   nameInp.style.cssText = "flex:1;border:none;background:transparent;font-size:13px;font-weight:700;color:#1c1c1e;font-family:Arial,sans-serif;outline:none;";
   var whoInp = document.createElement("input"); whoInp.type = "text"; whoInp.value = et.qui||"";
   whoInp.placeholder = "Qui";
@@ -545,11 +555,20 @@ function collectData() {
       var f = tasksSec._taskFields[task.id]; if (!f) return;
       out.tasks[task.id] = readSlots(f.row);
     });
-    var bfSec = container._bfSec || tasksSec;
-    TASKS_BOUT_FROID.forEach(function(task) {
-      var f = bfSec._taskFields[task.id]; if (!f) return;
-      out.tasks[task.id] = readSlots(f.row);
-    });
+    var bfContainer = document.getElementById("bf-form-section");
+    var bfSec = bfContainer ? bfContainer.querySelector(".tasks-sec") : null;
+    if (bfSec && bfSec._taskFields) {
+      TASKS_BOUT_FROID.forEach(function(task) {
+        var f = bfSec._taskFields[task.id]; if (!f) return;
+        out.tasks[task.id] = readSlots(f.row);
+      });
+    } else {
+      // Fallback sur tasksSec
+      TASKS_BOUT_FROID.forEach(function(task) {
+        var f = tasksSec._taskFields[task.id]; if (!f) return;
+        out.tasks[task.id] = readSlots(f.row);
+      });
+    }
     tasksSec._extraFields.forEach(function(et) {
       var name = et.row._nameInp ? et.row._nameInp.value.trim() : "";
       if (!name) return;
@@ -607,7 +626,7 @@ async function ensureSession() {
 async function saveSession() {
   var date = document.getElementById("f-date").value;
   var machine = document.getElementById("f-machine-name").value.trim();
-  if (!date || !machine) { alert("Veuillez remplir la date et la machine."); return; }
+  if (!date || !machine) { alert("Veuillez remplir la date et le numéro de ligne."); return; }
 
   var sessId = await ensureSession();
   if (!sessId) return;
@@ -671,7 +690,7 @@ async function saveSession() {
   await set(ref(db,"sessions/"+sessId+"/title"), machine+" - "+dl);
   await set(ref(db,"sessions/"+sessId+"/savedAt"), Date.now());
 
-  showToast("Seance enregistree !", "#34c759");
+  showToast("Séance enregistrée !", "#34c759");
 
   // Lire les donnees completes depuis Firebase pour afficher le Gantt
   var snap = await get(ref(db,"sessions/"+sessId));
@@ -697,7 +716,7 @@ async function autoSaveExtras(isBC2) {
 }
 
 async function newSession() {
-  if (!confirm("Repartir a zero ?")) return;
+  if (!confirm("Repartir à zéro ?")) return;
   justifications = [];
   resetState();
   buildForm();
@@ -713,8 +732,8 @@ function renderHistory(sessions) {
     if (db2!==da) return db2>da?1:-1;
     return (b[1].savedAt||0)-(a[1].savedAt||0);
   });
-  document.getElementById("history-count").textContent = arr.length ? arr.length+" seance(s)" : "";
-  if (!arr.length) { list.innerHTML = '<div class="history-empty">Aucune seance enregistree</div>'; return; }
+  document.getElementById("history-count").textContent = arr.length ? arr.length+" séance(s)" : "";
+  if (!arr.length) { list.innerHTML = '<div class="history-empty">Aucune séance enregistrée</div>'; return; }
 
   var totalPages = Math.ceil(arr.length/HISTORY_PAGE_SIZE);
   if (historyPage >= totalPages) historyPage = totalPages-1;
@@ -738,7 +757,7 @@ function renderHistory(sessions) {
 
   if (totalPages > 1) {
     html += '<div class="history-pagination">'+
-      '<button class="history-page-btn" id="hist-prev" '+(historyPage===0?'disabled':'')+'>Precedent</button>'+
+      '<button class="history-page-btn" id="hist-prev" '+(historyPage===0?'disabled':'')+'>Précédent</button>'+
       '<span class="history-page-info">'+(historyPage+1)+' / '+totalPages+'</span>'+
       '<button class="history-page-btn" id="hist-next" '+(historyPage>=totalPages-1?'disabled':'')+'>Suivant</button>'+
       '</div>';
@@ -808,8 +827,8 @@ function updateBC2Button() {
   }
 }
 
-async function deleteSession(id) { if (!confirm("Supprimer cette seance ?")) return; await remove(ref(db,"sessions/"+id)); if (currentSessId === id) { resetState(); buildForm(); } }
-async function deleteAllHistory() { if (!confirm("Supprimer tout l historique ?")) return; await remove(ref(db,"sessions")); resetState(); buildForm(); }
+async function deleteSession(id) { if (!confirm("Supprimer cette séance ?")) return; await remove(ref(db,"sessions/"+id)); if (currentSessId === id) { resetState(); buildForm(); } }
+async function deleteAllHistory() { if (!confirm("Supprimer tout l'historique ?")) return; await remove(ref(db,"sessions")); resetState(); buildForm(); }
 
 // ── GANTT ─────────────────────────────────────────────────────────────────────
 function fmtCmtCell(cmts, color) {
@@ -1118,7 +1137,7 @@ function openJustifDialog(){
     if(!text){alert("Veuillez saisir un commentaire.");return;}
     justifications.push({taskA:taskA,taskB:taskB,ecartMin:ecartMin,text:text});
     dialog.remove(); renderJustifications();
-    showToast("Justification enregistree !","#f59e0b");
+    showToast("Justification enregistrée !","#f59e0b");
   });
 }
 
@@ -1153,7 +1172,7 @@ function showQuiEditor(cell,uid,current){
   function applyEdit(){
     var val=input.value.trim(); if(!val){editor.remove();return;}
     ganttQuiOverrides[uid]=val; cell.textContent=val+" [mod]"; cell.dataset.uid=uid;
-    editor.remove(); showToast("Responsable mis a jour !","#1a3a6b");
+    editor.remove(); showToast("Responsable mis à jour !","#1a3a6b");
   }
   saveBtn.addEventListener("click",applyEdit);
   input.addEventListener("keydown",function(e){if(e.key==="Enter")applyEdit();if(e.key==="Escape")editor.remove();});
@@ -1192,9 +1211,9 @@ function initExportButtons(){
 function exportToExcel(dateFrom,dateTo){
   var sessions=Object.values(allSessions);
   var filtered=dateFrom&&dateTo?sessions.filter(function(s){return s.date>=dateFrom&&s.date<=dateTo;}):sessions;
-  if(!filtered.length){alert("Aucune seance trouvee.");return;}
+  if(!filtered.length){alert("Aucune séance trouvée.");return;}
   filtered.sort(function(a,b){return new Date(a.date)-new Date(b.date);});
-  var rows=[["ID_Changement","Date","Date_Heure_Debut","Date_Heure_Fin","Jour","Machine","Section","Tâche","Qui","Début","Fin","Durée (min)","Commentaire"]];
+  var rows=[["ID_Changement","Date","Date_Heure_Début","Date_Heure_Fin","Jour","Ligne","Machine","Section","Tâche","Qui","Début","Fin","N° Créneau","Durée (min)","Durée Cible (min)","Commentaire"]];
   filtered.forEach(function(session){
     var dateStr=session.date||"",jourStr=dateStr?new Date(dateStr+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long"}):"",machine=session.machine||"";
     var data=session.ganttData||{},targets=data.targets||{},tasks=data.tasks||{};
@@ -1209,14 +1228,29 @@ function exportToExcel(dateFrom,dateTo){
       if (!dateS || !timeS || timeS === "--") return "";
       return dateS + " " + timeS + ":00";
     }
-    function addExportRow(section, tache, qui, start, end, commentaire, mach) {
+    // Durées cibles par tâche (en minutes)
+    var DUREES_CIBLES = {
+      "T0 : Aligneur vide": 30,
+      "T0’ : Nettoyage de ligne": 45,
+      "T1 : Durée pré-réglage": 60,
+      "T1’ : Arrivée 2 sections contrôlables": 30,
+      "T2 : Top qualités": 20,
+      "T2’ : Premier lot sorti": 15,
+      "T2’’ : Montée en régime": 30
+    };
+
+    function addExportRow(section, tache, qui, start, end, commentaire, mach, creneau) {
       rowIdx++;
+      var ligne = mach||machine;
       var dur = toMin(start)!==null&&toMin(end)!==null ? toMin(end)-toMin(start) : "";
+      var dureeC = DUREES_CIBLES[tache] || "";
       rows.push([
         makeId(mach||machine, dateStr, rowIdx),
         dateStr, makeDT(dateStr,start), makeDT(dateStr,end),
-        jourStr, mach||machine, section, tache, qui, start, end, dur,
-        (commentaire||"").replace(/\n/g," | ")
+        jourStr, ligne, mach||machine, section, tache, qui, start, end,
+        creneau||1, dur, dureeC,
+        (commentaire||"").replace(/
+/g," | ")
       ]);
     }
 
@@ -1224,31 +1258,42 @@ function exportToExcel(dateFrom,dateTo){
       var t=targets[td[0]]||{};
       addExportRow(td[1],"Target","--",getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
     });
+    function exportTaskCreneaux(section, taskMachine, qui, t, mach) {
+      var creneaux = [
+        {sh:t.sh,sm:t.sm,eh:t.eh,em:t.em,cmt:t.comment},
+        {sh:t.sh2,sm:t.sm2,eh:t.eh2,em:t.em2,cmt:t.comment2},
+        {sh:t.sh3,sm:t.sm3,eh:t.eh3,em:t.em3,cmt:t.comment3},
+        {sh:t.sh4,sm:t.sm4,eh:t.eh4,em:t.em4,cmt:t.comment4}
+      ];
+      var num = 0;
+      creneaux.forEach(function(c, i) {
+        var s = getTV(c.sh||"",c.sm||""), e = getTV(c.eh||"",c.em||"");
+        if (s || e) { num++; addExportRow(section, taskMachine, qui, s, e, c.cmt||"", mach, num); }
+      });
+      if (num === 0) addExportRow(section, taskMachine, qui, "", "", "", mach, 1);
+    }
+
     TASKS_RONDELLE.forEach(function(task){
       var t=tasks[task.id]||{};
-      addExportRow("Bout Chaud 1",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
+      exportTaskCreneaux("Bout Chaud 1", task.machine, t.qui||task.qui, t, machine);
     });
     extras.filter(function(et){return (et.group||"boutchaud")==="boutchaud";}).forEach(function(et){
-      addExportRow("Bout Chaud 1",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine);
+      exportTaskCreneaux("Bout Chaud 1", et.machine||"Extra", et.qui||"", et, machine);
     });
     TASKS_BOUT_FROID.forEach(function(task){
       var t=tasks[task.id]||{};
-      addExportRow("Bout Froid",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);
+      exportTaskCreneaux("Bout Froid", task.machine, t.qui||task.qui, t, machine);
     });
     extras.filter(function(et){return et.group==="boutfroid";}).forEach(function(et){
-      addExportRow("Bout Froid",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine);
+      exportTaskCreneaux("Bout Froid", et.machine||"Extra", et.qui||"", et, machine);
     });
     if (hasBc2Export) {
       TASKS_RONDELLE.forEach(function(task){
         var t=tasks2[task.id]||{};
-        addExportRow("Bout Chaud 2",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine2Export);
+        exportTaskCreneaux("Bout Chaud 2", task.machine, t.qui||task.qui, t, machine2Export);
       });
       extras2.filter(function(et){return (et.group||"boutchaud")==="boutchaud";}).forEach(function(et){
-        addExportRow("Bout Chaud 2",et.machine||"Extra",et.qui||"",getTV(et.sh||"",et.sm||""),getTV(et.eh||"",et.em||""),et.comment||"",machine2Export);
-      });
-      TASKS_BOUT_FROID.forEach(function(task){
-        var t=tasks2[task.id+"_2"]||{};
-        addExportRow("Bout Froid BC2",task.machine,t.qui||task.qui,getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine2Export);
+        exportTaskCreneaux("Bout Chaud 2", et.machine||"Extra", et.qui||"", et, machine2Export);
       });
     }
     rows.push(Array(13).fill(""));

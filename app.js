@@ -13,7 +13,7 @@ const firebaseConfig = {
 };
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
-const db = getDatabase(firebaseApp); 
+const db = getDatabase(firebaseApp);
 
 const TASK_COLORS = [
   "#3b82f6","#8b5cf6","#06b6d4","#22c55e","#f97316",
@@ -216,22 +216,8 @@ function buildForm() {
     appendTaskRow(tasksSec, task.id, task.machine, task.qui, tv, TASK_COLORS[idx % TASK_COLORS.length]);
   });
 
-  var bfSep = document.createElement("div");
-  bfSep.style.cssText = "background:"+BOUT_FROID_COLOR+";color:#fff;font-size:12px;font-weight:700;padding:8px 12px;letter-spacing:.5px;";
-  bfSep.textContent = "BOUT FROID"; tasksSec.appendChild(bfSep);
-
-  TASKS_BOUT_FROID.forEach(function(task) {
-    var tv = ganttData.tasks[task.id] || {};
-    tv._labelDebut = task.labelDebut; tv._labelFin = task.labelFin;
-    appendTaskRow(tasksSec, task.id, task.machine, task.qui, tv, task.color);
-  });
-
-  (ganttData.extraTasks || []).forEach(function(et) {
-    appendExtraTaskRow(tasksSec, et, et.color || TASK_COLORS[0]);
-  });
-
   var addBtn = document.createElement("button");
-  addBtn.className = "btn-add-task"; addBtn.textContent = "+ Ajouter une tache";
+  addBtn.className = "btn-add-task"; addBtn.textContent = "+ Ajouter une tâche";
   addBtn.addEventListener("click", function() {
     var existing = document.getElementById("add-task-popup");
     if (existing) { existing.remove(); return; }
@@ -260,8 +246,40 @@ function buildForm() {
   container.appendChild(tasksSec);
   container._tasksSec = tasksSec;
 
-  // Reconstruire BC2 si actif
-  if (bc2Active) buildBC2Form();
+  // BC2 s'insere ici si actif (dans le HTML bc2-form-section est juste apres)
+  if (bc2Active) {
+    var bc2div = document.getElementById("bc2-form-section");
+    if (bc2div) bc2div.style.display = "block";
+    buildBC2Form();
+  }
+
+  // Bout Froid - section separee apres BC2
+  var bfSec = document.createElement("div");
+  bfSec.className = "tasks-sec"; bfSec.style.borderColor = BOUT_FROID_COLOR;
+  var bfHd = document.createElement("div"); bfHd.className = "tasks-sec-hd"; bfHd.style.background = BOUT_FROID_COLOR;
+  bfHd.textContent = "Bout Froid"; bfSec.appendChild(bfHd);
+  bfSec._taskFields = {}; bfSec._extraFields = [];
+
+  TASKS_BOUT_FROID.forEach(function(task) {
+    var tv = ganttData.tasks[task.id] || {};
+    tv._labelDebut = task.labelDebut; tv._labelFin = task.labelFin;
+    appendTaskRow(bfSec, task.id, task.machine, task.qui, tv, task.color);
+  });
+
+  (ganttData.extraTasks || []).filter(function(et){return et.group==="boutfroid";}).forEach(function(et) {
+    appendExtraTaskRow(bfSec, et, et.color || TASK_COLORS[0]);
+  });
+
+  var addBtnBF = document.createElement("button");
+  addBtnBF.className = "btn-add-task"; addBtnBF.textContent = "+ Ajouter une tâche Bout Froid";
+  addBtnBF.addEventListener("click", function() {
+    var bfColors = ["#f1c40f","#64748b","#795548","#2e86ab","#9b59b6","#1abc9c","#e67e22"];
+    var idx2 = bfSec._extraFields.length;
+    appendExtraTaskRow(bfSec, {group:"boutfroid"}, bfColors[idx2%7]);
+  });
+  bfSec.appendChild(addBtnBF);
+  container.appendChild(bfSec);
+  container._bfSec = bfSec;
 }
 
 function buildBC2Form() {
@@ -527,8 +545,9 @@ function collectData() {
       var f = tasksSec._taskFields[task.id]; if (!f) return;
       out.tasks[task.id] = readSlots(f.row);
     });
+    var bfSec = container._bfSec || tasksSec;
     TASKS_BOUT_FROID.forEach(function(task) {
-      var f = tasksSec._taskFields[task.id]; if (!f) return;
+      var f = bfSec._taskFields[task.id]; if (!f) return;
       out.tasks[task.id] = readSlots(f.row);
     });
     tasksSec._extraFields.forEach(function(et) {
@@ -604,13 +623,23 @@ async function saveSession() {
   // Sauvegarder uniquement les taches remplies sur ce PC
   // Les taches vides ne sont JAMAIS ecrasees dans Firebase
   // => 2 PC peuvent remplir des sections differentes sans conflit
-  for (var taskId of ALL_TASK_IDS) {
+  // Sauvegarder BC1 (bout chaud) - taches non vides seulement
+  var BC1_IDS = TASKS_RONDELLE.map(function(t){return t.id;});
+  for (var taskId of BC1_IDS) {
     var t = data.tasks[taskId] || {};
     var hasData = t.sh || t.eh || t.comment || t.sh2 || t.eh2 || t.sh3 || t.eh3 || t.sh4 || t.eh4;
     if (hasData) {
       await set(ref(db,"sessions/"+sessId+"/ganttData/tasks/"+taskId), t);
     }
-    // Si vide -> ne pas toucher Firebase -> preserve les donnees de l autre PC
+  }
+  // Sauvegarder Bout Froid - taches non vides seulement
+  var BF_IDS = TASKS_BOUT_FROID.map(function(t){return t.id;});
+  for (var bfId of BF_IDS) {
+    var tbf = data.tasks[bfId] || {};
+    var hasDataBF = tbf.sh || tbf.eh || tbf.comment || tbf.sh2 || tbf.eh2 || tbf.sh3 || tbf.eh3 || tbf.sh4 || tbf.eh4;
+    if (hasDataBF) {
+      await set(ref(db,"sessions/"+sessId+"/ganttData/tasks/"+bfId), tbf);
+    }
   }
 
   // Sauvegarder les extras seulement si ce PC en a
@@ -774,7 +803,7 @@ function updateBC2Button() {
     sec.style.display = "block";
   } else {
     btn.textContent = "+ Bout Chaud 2";
-    btn.style.background = "#1a9ab5";
+    btn.style.background = "#fa8072";
     sec.style.display = "none";
   }
 }

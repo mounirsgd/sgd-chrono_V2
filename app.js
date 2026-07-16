@@ -1241,7 +1241,7 @@ function exportToExcel(dateFrom,dateTo){
       "T2’’ : Montée en régime": 30
     };
 
-    function addExportRow(section, tache, qui, start, end, commentaire, mach, creneau) {
+  function addExportRow(section, tache, qui, start, end, commentaire, mach, creneau) {
       rowIdx++;
       var ligne = mach||machine;
       var dur = toMin(start)!==null&&toMin(end)!==null ? toMin(end)-toMin(start) : "";
@@ -1251,11 +1251,9 @@ function exportToExcel(dateFrom,dateTo){
         dateStr, makeDT(dateStr,start), makeDT(dateStr,end),
         jourStr, ligne, mach||machine, section, tache, qui, start, end,
         creneau||1, dur, dureeC,
-        ((commentaire||"").replace(/\n/g," | ")
-
+        (commentaire||"").replace(/\n/g," | ")
       ]);
     }
-
     [["grand_t1","TARGET (Grand T1)"],["petit_t1","TARGET (Petit t1)"],["rondelle","TARGET (Rondelle)"]].forEach(function(td){
       var t=targets[td[0]]||{};
       addExportRow(td[1],"Target","--",getTV(t.sh||"",t.sm||""),getTV(t.eh||"",t.em||""),t.comment||"",machine);

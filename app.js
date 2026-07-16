@@ -1251,8 +1251,8 @@ function exportToExcel(dateFrom,dateTo){
         dateStr, makeDT(dateStr,start), makeDT(dateStr,end),
         jourStr, ligne, mach||machine, section, tache, qui, start, end,
         creneau||1, dur, dureeC,
-        (commentaire||"").replace(/
-/g," | ")
+        ((commentaire||"").replace(/\n/g," | ")
+
       ]);
     }
 

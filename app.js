@@ -36,17 +36,19 @@ const TASKS_RONDELLE = [
 
 const TASKS_BOUT_FROID = [
   {id:"bf_1", machine:"T0 : Aligneur vide", qui:"Production", color:"#f1c40f", labelDebut:"Début", labelFin:"Fin"},
-  {id:"bf_5", machine:"T0’ : Nettoyage de ligne", qui:"Production", color:"#e67e22", labelDebut:"Début", labelFin:"Heur valid. vide de ligne"},
-  {id:"bf_2", machine:"T1 : Durée pré-réglage", qui:"Automation", color:"#64748b", labelDebut:"Début réglage automation", labelFin:"Fin réglage de base machines"},
-  {id:"bf_4", machine:"T1’ : Arrivée 2 sections contrôlables", qui:"Automation", color:"#2e86ab", labelDebut:"Arrivée deux sections", labelFin:"Arrivée de toutes sections"},
-  {id:"bf_3", machine:"T2 : Top qualités", qui:"Automation", color:"#795548", labelDebut:"Début", labelFin:"Fin"},
-  {id:"bf_6", machine:"T2’ : Premier lot sorti", qui:"Automation", color:"#9b59b6", labelDebut:"Début", labelFin:"Fin"},
-  {id:"bf_7", machine:"T2’’ : Montée en régime", qui:"Automation", color:"#1abc9c", labelDebut:"Début", labelFin:"Val. 2 lots commercialisables"}
+  {id:"bf_2", machine:"Nettoyage de ligne", qui:"Production", color:"#e67e22", labelDebut:"Début", labelFin:"Heur valid. vide de ligne"},
+  {id:"bf_3", machine:"T1 : Durée pré-réglage", qui:"Automation", color:"#64748b", labelDebut:"Début réglage automation", labelFin:"Fin réglage de base machines"},
+  {id:"bf_4", machine:"Arrivée 2 sections contrôlables", qui:"Automation", color:"#2e86ab", labelDebut:"Début", labelFin:"Fin"},
+  {id:"bf_5", machine:"Arrivée de toutes sections", qui:"Automation", color:"#2e86ab", labelDebut:"Début", labelFin:"Fin"},
+  {id:"bf_6", machine:"Top qualités", qui:"Automation", color:"#795548", labelDebut:"Début", labelFin:"Fin"},
+  {id:"bf_7", machine:"Premier lot sorti", qui:"Automation", color:"#9b59b6", labelDebut:"Début", labelFin:"Fin"},
+  {id:"bf_8", machine:"Val. 2 lots commercialisables", qui:"Automation", color:"#1abc9c", labelDebut:"Début", labelFin:"Fin"}
+
 ];
 const BOUT_FROID_COLOR = "#2e86ab";
 const MAX_SLOTS = 4;
 const HISTORY_PAGE_SIZE = 5;
-const ALL_TASK_IDS = TASKS_RONDELLE.map(function(t){return t.id;}).concat(TASKS_BOUT_FROID.map(function(t){return t.id;}));
+const ALL_TASK_IDS = TASKS_RONDELLE.map(function(t){return t.id;}).concat(TASKS_BOUT_FROID.map(function(t){return t.id;}));la
 
 let allSessions = {};
 let ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, extraTasks:[], tasks2:{}, extraTasks2:[], bc2Active:false, machine2:"" };

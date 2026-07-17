@@ -1312,4 +1312,5 @@ function showToast(message,color){
   toast.style.cssText="position:fixed;top:70px;left:50%;transform:translateX(-50%);background:"+color+";color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:700;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .3s;font-family:Arial,sans-serif;";
   document.body.appendChild(toast);
   setTimeout(function(){toast.style.opacity="0";setTimeout(function(){toast.remove();},300);},2500);
-}
+ }
+} 

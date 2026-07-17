@@ -48,8 +48,7 @@ const TASKS_BOUT_FROID = [
 const BOUT_FROID_COLOR = "#2e86ab";
 const MAX_SLOTS = 4;
 const HISTORY_PAGE_SIZE = 5;
-const ALL_TASK_IDS = TASKS_RONDELLE.map(function(t){return t.id;}).concat(TASKS_BOUT_FROID.map(function(t){return t.id;}));la
-
+const ALL_TASK_IDS = TASKS_RONDELLE.map(function(t){return t.id;}).concat(TASKS_BOUT_FROID.map(function(t){return t.id;}));
 let allSessions = {};
 let ganttData = { targets:{grand_t1:{},petit_t1:{},rondelle:{}}, tasks:{}, extraTasks:[], tasks2:{}, extraTasks2:[], bc2Active:false, machine2:"" };
 let selectedIds = [];
